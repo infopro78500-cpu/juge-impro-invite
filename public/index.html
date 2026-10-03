@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Juge d'Impro · Public</title>
+<meta name="description" content="Envoie des mots au rappeur en live sur Juge d'Impro.">
+<meta name="theme-color" content="#0d0d12">
+<link rel="stylesheet" href="public.css">
+</head>
+<body>
+<header>
+  <div class="logo">JUGE<span>D'IMPRO</span></div>
+  <div class="pastille">📺 Public</div>
+</header>
+
+<main>
+  <section id="accueil" class="carte" hidden>
+    <h1>Envoie tes mots au rappeur 🎤</h1>
+    <p>Entre le code affiché sur le live.</p>
+    <label>Code <input id="code" maxlength="8" autocomplete="off" spellcheck="false" autocapitalize="characters"></label>
+    <button id="entrer" class="go">ENTRER</button>
+  </section>
+
+  <section id="salle" hidden>
+    <div class="carte ecran">
+      <div id="statut" class="statut">Connexion…</div>
+      <div class="a-lecran"><span>À l’écran</span><b id="mot-ecran">—</b></div>
+      <div id="compteurs" class="astuce"></div>
+    </div>
+
+    <form id="form-mot" class="carte">
+      <label>Un mot que le rappeur doit placer dans son impro
+        <input id="mot" maxlength="24" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="ex. météorite" enterkeyhint="send">
+      </label>
+      <label>Ton pseudo <input id="pseudo" maxlength="20" autocomplete="nickname" placeholder="facultatif"></label>
+      <button class="go" id="envoyer">ENVOYER LE MOT</button>
+      <p id="message" class="astuce" aria-live="polite"></p>
+    </form>
+
+    <button id="flamme" class="flamme" type="button">🔥<span>Chauffe la salle</span></button>
+
+    <div class="carte">
+      <h2>Tes mots</h2>
+      <ul id="mes-mots" class="mes-mots"><li class="astuce">Tes mots apparaîtront ici, avec leur sort : à l’écran, placé ou pas.</li></ul>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../reseau.js"></script>
+<script src="public.js"></script>
+</body>
+</html>

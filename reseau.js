@@ -12,7 +12,9 @@
     // Clé publique (« publishable ») : prévue pour être visible dans une page web
     supabaseCle: 'sb_publishable_lC3DjTtBjTf0ys--vVwwag_qZj10QDv',
     // Adresse publique de la page invité (GitHub Pages) ; vide = page servie en local
-    pageInvite: 'https://infopro78500-cpu.github.io/juge-impro-invite/'
+    pageInvite: 'https://infopro78500-cpu.github.io/juge-impro-invite/',
+    // Page des spectateurs (Public en live) ; vide = page servie en local
+    pagePublic: 'https://infopro78500-cpu.github.io/juge-impro-invite/public/'
   };
   const ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
   const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // sans 0/O ni 1/I/L
@@ -167,5 +169,27 @@
     surProgres(1);
   }
 
-  root.Reseau = { CONFIG, nouveauCode, lienInvite, creerLiaison, envoyerFichier };
+  function lienPublic(code) {
+    const base = CONFIG.pagePublic || `${location.origin}/public/`;
+    return `${base}?salle=${encodeURIComponent(code)}`;
+  }
+
+  // Public en live : un canal de diffusion par salle. Les spectateurs y envoient des mots et des flammes,
+  // le rappeur y renvoie l'état du jeu. Rien n'est stocké : les messages ne font que passer.
+  function creerCanalPublic({ code, surEvenement, surStatut = () => { }, ping = false }) {
+    if (!root.supabase) throw new Error('Bibliothèque Supabase non chargée (connexion internet ?)');
+    const sb = root.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseCle, { auth: { persistSession: false } });
+    if (ping) sb.rpc('ping').then(() => { }, () => { });
+    const canal = sb.channel(`juge-impro:public:${code}`, { config: { broadcast: { self: false } } });
+    for (const ev of ['mot', 'flamme', 'statut', 'etat', 'bonjour']) {
+      canal.on('broadcast', { event: ev }, ({ payload }) => surEvenement(ev, payload || {}));
+    }
+    canal.subscribe((st) => surStatut(st));
+    return {
+      envoyer: (event, payload) => canal.send({ type: 'broadcast', event, payload }),
+      fermer: () => { try { sb.removeChannel(canal); } catch { /* déjà fermé */ } }
+    };
+  }
+
+  root.Reseau = { CONFIG, nouveauCode, lienInvite, lienPublic, creerLiaison, creerCanalPublic, envoyerFichier };
 })(typeof window !== 'undefined' ? window : globalThis);

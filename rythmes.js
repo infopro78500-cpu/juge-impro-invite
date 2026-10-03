@@ -128,9 +128,9 @@
       if (style.roulement && mesure === 3 && style.roulement.includes(pas)) hat(t + duree16 / 2, false, 0.6);
     }
 
-    function planifier() {
+    function planifier(limite = ctx.currentTime + 0.12) {
       const duree16 = 60 / bpm / 4;
-      while (prochain < ctx.currentTime + 0.12) {
+      while (prochain < limite) {
         // swing : les contretemps de croche arrivent un peu en retard
         const decale = (numero % 4 === 2) ? style.swing * duree16 : 0;
         jouerPas(numero, prochain + decale);
@@ -163,6 +163,14 @@
         if (style.vinyle) demarrerVinyle();
         planifier();
         minuterie = setInterval(planifier, 25);
+      },
+      // rendu hors ligne (export d'un morceau) : tout le beat est programmé d'un coup, de 0 à fin
+      programmer(nouveauBpm, idStyle, fin) {
+        style = STYLES[idStyle] || STYLES.boombap;
+        bpm = nouveauBpm || style.bpm;
+        debut = 0; prochain = 0; numero = 0;
+        if (style.vinyle) { demarrerVinyle(); vinyle.stop(fin); }
+        planifier(fin);
       },
       arreter() {
         clearInterval(minuterie);

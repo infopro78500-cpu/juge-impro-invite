@@ -1,0 +1,64 @@
+:root {
+  --fond: #0d0d12;
+  --panneau: #16161f;
+  --panneau2: #1e1e2a;
+  --bord: #2a2a3a;
+  --texte: #ececf3;
+  --doux: #8b8ba3;
+  --accent: #ffcc00;
+  --accent2: #ff3d6e;
+  --orange: #ff8c42;
+  --vert: #3ddc97;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--fond); color: var(--texte); font: 16px/1.5 system-ui, "Segoe UI", Roboto, sans-serif; }
+button, input { font: inherit; color: inherit; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--bord); gap: 12px; }
+.logo { font-weight: 900; font-size: 20px; letter-spacing: .04em; }
+.logo span { color: var(--accent); margin-left: 6px; }
+.pastille { border: 1px solid var(--bord); border-radius: 999px; padding: 3px 12px; color: var(--doux); font-size: 14px; }
+main { padding: 16px; max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+#salle { display: flex; flex-direction: column; gap: 14px; }
+.carte { background: var(--panneau); border: 1px solid var(--bord); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.carte h1 { margin: 0; font-size: 22px; }
+.carte h2 { margin: 0; font-size: 17px; }
+.carte p { margin: 0; color: var(--doux); }
+.carte label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--doux); }
+.carte input { background: var(--panneau2); border: 1px solid var(--bord); border-radius: 10px; padding: 12px; font-size: 18px; width: 100%; }
+#code { letter-spacing: .2em; text-transform: uppercase; font-weight: 800; }
+#mot { font-weight: 800; }
+.go { padding: 15px; border: 0; border-radius: 12px; cursor: pointer; background: var(--accent); color: #000; font-weight: 900; font-size: 17px; letter-spacing: .04em; }
+.astuce { color: var(--doux); font-size: 14px; }
+.statut { font-weight: 700; font-size: 14px; }
+.a-lecran { display: flex; flex-direction: column; align-items: center; padding: 6px 0; }
+.a-lecran span { color: var(--orange); font-weight: 800; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+.a-lecran b { font-size: 32px; font-weight: 900; letter-spacing: .03em; text-align: center; overflow-wrap: anywhere; }
+.flamme { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 18px; border-radius: 16px; border: 2px solid var(--orange);
+  background: rgba(255, 140, 66, .12); color: var(--texte); font-size: 34px; cursor: pointer; touch-action: manipulation; user-select: none; }
+.flamme span { font-size: 17px; font-weight: 800; }
+.flamme.pulse { animation: pulse .35s ease-out; }
+@keyframes pulse { 0% { transform: scale(.94); } 60% { transform: scale(1.04); } 100% { transform: scale(1); } }
+.mes-mots { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.mes-mots li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; background: var(--panneau2); border-radius: 10px; padding: 8px 12px; }
+.mes-mots li span { color: var(--doux); font-size: 14px; text-align: right; }
+.mes-mots li.place { outline: 2px solid var(--vert); }
+.mes-mots li.place span { color: var(--vert); font-weight: 800; }
+.mes-mots li.affiche span { color: var(--orange); font-weight: 800; }
+.mes-mots li.refuse span, .mes-mots li.retire span { color: var(--accent2); }
+
+/* Page du classement */
+.centre { text-align: center; }
+.erreur { color: var(--accent2); }
+.nav-semaine { display: flex; align-items: center; gap: 10px; }
+.nav-semaine > div { flex: 1; text-align: center; }
+.petit-rond { width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--bord); background: var(--panneau2); cursor: pointer; flex: none; }
+.petit-rond:disabled { opacity: .3; cursor: default; }
+.defi { display: flex; flex-direction: column; gap: 4px; background: var(--panneau2); border-radius: 12px; padding: 12px; }
+.podium { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.podium li { display: grid; grid-template-columns: 40px 1fr auto; grid-template-rows: auto auto; column-gap: 10px; align-items: center; background: var(--panneau2); border-radius: 12px; padding: 10px 12px; }
+.podium li.top { outline: 1px solid rgba(255, 204, 0, .4); }
+.podium .pos { grid-row: span 2; font-size: 22px; font-weight: 900; text-align: center; }
+.podium .pts { font-weight: 900; color: var(--accent); }
+.podium .astuce { grid-column: 2 / span 2; }

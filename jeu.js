@@ -8,7 +8,8 @@
   const FENETRE_PILE = 0.045;      // ±45 ms autour de la croche : « pile »
   const FENETRE_BIEN = 0.09;       // ±90 ms : « bien »
   const LATENCE_RECO = 0.7;        // la reconnaissance vocale rend les mots avec un peu de retard
-  const GRACE_RAFALE = 2.5;        // délai de la reconnaissance vocale : un mot dit juste avant la fin compte
+  const GRACE_RAFALE = 2.5;
+  const DUREE_MOT_PUBLIC = 15;     // un mot du public reste affiché 15 s        // délai de la reconnaissance vocale : un mot dit juste avant la fin compte
 
   const multiplicateurDe = (combo) => combo >= 10 ? 4 : combo >= 6 ? 3 : combo >= 3 ? 2 : 1;
 
@@ -126,7 +127,7 @@
     mots: '🧩 Mots placés', theme: '🗺️ Thème tenu', style: '🎭 Style respecté', multis: '🎯 Chasseur de multis',
     riches: '💎 Rimes riches', zeroBlanc: '🫁 Zéro blanc', flow: '🥁 Calé sur le temps', triple: '🎰 Triplé imposé',
     survie: '💀 Survivant', rafale: '⚡ Rafale tenue', rafaleParfaite: '🌩️ Rafale parfaite',
-    rimeCible: '🔗 Chaîne de rimes', allit: '🔤 Allitération', defiDuJour: '📅 Défi du jour', battle: '🥊 Battle gagnée', studio: '🎙️ Prise propre'
+    rimeCible: '🔗 Chaîne de rimes', allit: '🔤 Allitération', defiDuJour: '📅 Défi du jour', battle: '🥊 Battle gagnée', studio: '🎙️ Prise propre', public: '📺 Le public valide'
   };
 
   const correspond = (coeur, mot) => {
@@ -142,7 +143,7 @@
       { libelle: 'MOTS', valeur: (config.mots || []).join(' · ') }
     ];
     if (mode === 'defi') return [{ libelle: 'DÉFI', valeur: DEFIS[config.defi].nom, sous: texteDefi(config.defi, config) }];
-    if (mode === 'rafale') return [{ libelle: 'RAFALE', valeur: `Un mot toutes les ${config.mesures} mesures`, sous: config.mots ? 'Mots choisis par toi' : 'Mots tirés au sort' }];
+    if (mode === 'rafale') return [{ libelle: 'RAFALE', valeur: `Un mot toutes les ${config.mesures} mesures`, sous: config.mots ? (config.motsImposes ? 'Mots imposés, les mêmes pour tout le monde' : 'Mots choisis par toi') : 'Mots tirés au sort' }];
     if (mode === 'survie') return [{ libelle: 'SURVIE', valeur: 'Garde le public avec toi', sous: 'Hype à zéro = éliminé' }];
     if (mode === 'featuring') return [{ libelle: 'FEATURING', valeur: (config.joueurs || []).join('  ×  '), sous: `${config.mesures} mesures chacun, à tour de rôle` }];
     if (mode === 'studio') return [{
@@ -550,9 +551,64 @@
 
     function nouveauMotRafale(t) {
       const r = p.rafale;
-      const mot = r.liste[r.index % r.liste.length];
-      r.index++;
-      r.courant = { mot, t0: t, t1: t + r.duree, place: false };
+      const it = p.public && p.public.file.length ? p.public.file.shift() : null;
+      const mot = it ? it.mot : r.liste[r.index % r.liste.length];
+      if (!it) r.index++;
+      r.courant = { mot, t0: t, t1: t + r.duree, place: false, pseudo: it ? it.pseudo : null, idPublic: it ? it.id : null };
+      if (it) p.public.evenements.push({ id: it.id, etat: 'affiche' });
+    }
+
+    // ---------- Public en live : les spectateurs envoient des mots et des flammes ----------
+    function activerPublic() {
+      if (!p.public) p.public = { file: [], courant: null, recus: 0, places: 0, flammes: 0, aAfficher: 0, dernierPopup: 0, evenements: [] };
+      return p.public;
+    }
+    function proposerMot(item) {
+      const pu = activerPublic();
+      pu.recus++;
+      pu.file.push(item);
+    }
+    function retirerMot(id) {
+      const pu = activerPublic();
+      pu.file = pu.file.filter((x) => x.id !== id);
+      if (pu.courant && pu.courant.id === id && !pu.courant.place) pu.courant.t1 = p.t; // passé par l'hôte
+    }
+    // une flamme réchauffe la salle : la hype monte (en Survie, le public peut te sauver)
+    function ajouterFlammes(n) {
+      const pu = activerPublic();
+      if (p.termine) return;
+      pu.flammes += n;
+      pu.aAfficher += n;
+      p.hype = Math.min(100, p.hype + 1.2 * n);
+    }
+    function majPublic(t) {
+      const pu = p.public;
+      if (pu.aAfficher && t - pu.dernierPopup >= 1.2) {
+        popup(`🔥 ×${pu.aAfficher}`, { sous: 'le public chauffe la salle', couleur: '#ff8c42', taille: 0.75, duree: 1.2 });
+        pu.aAfficher = 0;
+        pu.dernierPopup = t;
+      }
+      if (p.rafale) return; // en rafale, les mots du public deviennent les mots imposés
+      if (pu.courant && t >= pu.courant.t1) {
+        if (!pu.courant.place) pu.evenements.push({ id: pu.courant.id, etat: 'expire' });
+        pu.courant = null;
+      }
+      if (!pu.courant && pu.file.length && t >= 2) {
+        const it = pu.file.shift();
+        pu.courant = { ...it, t0: t, t1: t + DUREE_MOT_PUBLIC, place: false };
+        pu.evenements.push({ id: it.id, etat: 'affiche' });
+      }
+    }
+    function verifierPublic(res) {
+      const c = p.public.courant;
+      if (!c || c.place) return;
+      if (!res.tokens.some((t) => t.temps != null && t.temps >= c.t0 - 0.5 && correspond(t.coeur, c.mot))) return;
+      c.place = true;
+      p.public.places++;
+      const gain = gagner(80, { hype: 12 });
+      popup(`MOT DU PUBLIC ✓  +${gain}`, { sous: `« ${c.mot} »${c.pseudo ? ` · merci ${c.pseudo}` : ''}`, couleur: '#ff8c42', taille: 1.1 });
+      p.public.evenements.push({ id: c.id, etat: 'place' });
+      c.t1 = Math.min(c.t1, p.t + 1.5);
     }
 
     function verifierRafale(res) {
@@ -563,6 +619,7 @@
         if (!tok) continue;
         item.place = true;
         r.places++;
+        if (item.idPublic && p.public) { p.public.places++; p.public.evenements.push({ id: item.idPublic, etat: 'place' }); }
         const vitesse = Math.max(0, 1 - (Math.max(item.t0, tok.temps) - item.t0) / r.duree);
         const gain = gagner(60 + Math.round(40 * vitesse), { hype: 8 });
         popup(`PLACÉ : ${item.mot.toUpperCase()}  +${gain}`, { couleur: '#c77dff', taille: 1.1 });
@@ -584,6 +641,7 @@
         p.hype = Math.max(0, p.hype - 6);
         casserCombo('mot raté');
         popup(`RATÉ : ${item.mot.toUpperCase()}`, { couleur: '#ff3d6e', taille: 0.9 });
+        if (item.idPublic && p.public) p.public.evenements.push({ id: item.idPublic, etat: 'expire' });
         return false;
       });
       p.objectifs[0].progression = `${r.places}/${r.total}`;
@@ -634,6 +692,7 @@
       if (p.termine) return;
       for (const o of p.objectifs) if (o.etat === 'encours') o.verifier(res);
       if (p.rafale) verifierRafale(res);
+      if (p.public && !p.rafale) verifierPublic(res);
     }
 
     // Appelé à chaque image : t = temps de session, tInstru = position dans l'instru (ou null)
@@ -670,6 +729,7 @@
       if (p.rafale) majRafale(t);
       if (p.feat) majFeaturing(t);
       if (p.studio) majStudio(t);
+      if (p.public) majPublic(t);
 
       // Précision rythmique sur les attaques franches de la voix
       if (voix.attaque && p.grille && tInstru != null && voix.attaque.force >= 0.3) {
@@ -765,8 +825,10 @@
         vainqueur = battle.complet ? battle.vainqueurNom : vainqueur;
       }
       const studio = p.studio ? bilanStudio() : null;
+      if (p.public && p.public.places >= 3 && !p.badges.includes('public')) p.badges.push('public');
       return {
         joueurs, vainqueur, battle, studio,
+        public: p.public ? { recus: p.public.recus, places: p.public.places, flammes: p.public.flammes } : null,
         score: p.score, bonusCombo, comboMax: p.comboMax, blancs: p.blancs,
         precision: prec, hypeMoyenne: p.hypeTemps ? p.hypeCumul / p.hypeTemps : p.hype,
         mode: p.mode, modeNom: p.modeNom, modeIcone: p.modeIcone,
@@ -789,6 +851,7 @@
     return Object.assign(p, {
       surAnalyse, tick, terminer, rang, tauxPrecision, verdictStyleIA, resumeObjectifs, joueurDe,
       resultatRound, resultatParPoints, bilanBattle, indexTour,
+      proposerMot, retirerMot, ajouterFlammes,
       paliersHype: () => paliersHype(p.hype)
     });
   }

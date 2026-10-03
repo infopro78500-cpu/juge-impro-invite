@@ -185,8 +185,9 @@
         ctx.save();
         ctx.translate(x + 28 * u, y + 96 * u);
         ctx.scale(1.3 - 0.3 * pop, 1.3 - 0.3 * pop);
-        texte(m.mot.toUpperCase(), 0, 0, { taille: 60, graisse: 900, couleur: m.place ? C.vert : C.or, ombre: 25, maxL: w - 60 * u });
+        texte(m.mot.toUpperCase(), 0, 0, { taille: 60, graisse: 900, couleur: m.place ? C.vert : C.or, ombre: 25, maxL: m.pseudo ? w * 0.62 : w - 60 * u });
         ctx.restore();
+        if (m.pseudo) texte(`📺 de ${m.pseudo}`, x + w - 24 * u, y + 92 * u, { taille: 20, graisse: 700, align: 'right', couleur: '#ff8c42', maxL: w * 0.32 });
         const reste = Math.max(0, Math.min(1, (m.t1 - e.t) / (m.t1 - m.t0)));
         rect(x + 28 * u, y + h - 30 * u, w - 56 * u, 10 * u, 5, 'rgba(255,255,255,.12)');
         rect(x + 28 * u, y + h - 30 * u, (w - 56 * u) * reste, 10 * u, 5, reste < 0.25 ? C.rose : C.violet);
@@ -194,7 +195,7 @@
       }
 
       const objs = p.objectifs || [];
-      if (!objs.length) return;
+      if (!objs.length) { cartePublic(e, x, y, w); return; }
       const lh = vertical() ? 38 * u : 44 * u;
       const h = 56 * u + objs.length * lh;
       rect(x, y, w, h, 16, 'rgba(0,0,0,.45)');
@@ -206,6 +207,42 @@
         texte(`${icone} ${o.libelle} : ${o.texte}`, x + 28 * u, yy, { taille: vertical() ? 25 : 27, graisse: 700, couleur, maxL: w - 190 * u });
         texte(o.progression || '', x + w - 24 * u, yy, { taille: 24, graisse: 800, align: 'right', couleur: o.etat === 'encours' ? C.doux : couleur });
       });
+      cartePublic(e, x, y + h + 16 * u, w);
+    }
+
+    // Public en live : le mot proposé par un spectateur, à placer avant la fin de la barre
+    function cartePublic(e, x, y, w) {
+      const c = e.partie.public && e.partie.public.courant;
+      if (!c) return;
+      const h = 124 * u;
+      const reste = Math.max(0, Math.min(1, (c.t1 - e.t) / (c.t1 - c.t0)));
+      rect(x, y, w, h, 16, 'rgba(0,0,0,.5)');
+      rect(x, y, 8 * u, h, 4, c.place ? C.vert : '#ff8c42');
+      texte(c.place ? 'MOT DU PUBLIC PLACÉ ✓' : '📺 LE PUBLIC PROPOSE', x + 28 * u, y + 34 * u, { taille: 22, graisse: 800, couleur: c.place ? C.vert : '#ff8c42' });
+      if (c.pseudo) texte(`de ${c.pseudo}`, x + w - 24 * u, y + 34 * u, { taille: 20, graisse: 700, align: 'right', couleur: C.doux, maxL: w * 0.4 });
+      texte(c.mot.toUpperCase(), x + 28 * u, y + 88 * u, { taille: 50, graisse: 900, couleur: c.place ? C.vert : C.texte, ombre: 18, maxL: w - 60 * u });
+      rect(x + 28 * u, y + h - 20 * u, w - 56 * u, 8 * u, 4, 'rgba(255,255,255,.12)');
+      rect(x + 28 * u, y + h - 20 * u, (w - 56 * u) * reste, 8 * u, 4, reste < 0.25 ? C.rose : '#ff8c42');
+    }
+
+    // QR code du Public en live : grand sur l'écran titre, petit pendant l'impro
+    function qrPublic(e, titre) {
+      const pub = e.public;
+      if (!pub || !pub.qr || (e.partie && e.partie.studio && !titre)) return;
+      const v = vertical();
+      const cote = (titre ? (v ? 230 : 250) : (v ? 120 : 150)) * u;
+      const x = titre ? W - (v ? 60 : 70) * u - cote : W - 60 * u - cote;
+      const y = titre ? H - (v ? 330 : 140) * u - cote : (v ? 40 * u : H - 260 * u - cote);
+      const n = pub.qr.length, marge = 3, pas = cote / (n + 2 * marge);
+      rect(x, y, cote, cote, 10, '#ffffff');
+      ctx.fillStyle = '#000000';
+      pub.qr.forEach((ligne, r) => ligne.forEach((noir, k) => {
+        if (noir) ctx.fillRect(x + (k + marge) * pas, y + (r + marge) * pas, pas + 0.6, pas + 0.6);
+      }));
+      // la légende reste dans l'image : calée sur le bord droit du QR
+      texte(titre ? '📲 ENVOIE TES MOTS AU RAPPEUR' : '📲 TES MOTS', x + cote, y - 14 * u, { taille: titre ? 24 : 18, graisse: 900, align: 'right', couleur: '#ff8c42' });
+      texte(`code ${pub.code} · ${pub.recus} mot${pub.recus > 1 ? 's' : ''} · 🔥 ${pub.flammes}`, x + cote / 2, y + cote + (titre ? 30 : 24) * u,
+        { taille: titre ? 22 : 16, graisse: 700, align: 'center', couleur: C.doux });
     }
 
     // ---------- Paroles (rimes en couleur) ----------
@@ -571,7 +608,7 @@
     function dessiner(e) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       fond(e);
-      if (!e.enCours && !e.fin) { ecranTitre(e); return; }
+      if (!e.enCours && !e.fin) { ecranTitre(e); qrPublic(e, true); return; }
       if (e.fin) { ecranFin(e); return; } // écran de fin épuré : c'est la carte de score à partager
       entete(e);
       jauges(e);
@@ -579,6 +616,7 @@
       if (e.partie && e.partie.studio) prompteur(e); else paroles(e);
       piste(e);
       popups(e);
+      qrPublic(e, false);
     }
 
     // ---------- Export ----------

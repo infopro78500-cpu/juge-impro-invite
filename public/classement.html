@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Juge d'Impro · Classement</title>
+<meta name="description" content="Le classement du défi de la semaine d'un crew sur Juge d'Impro.">
+<meta name="theme-color" content="#0d0d12">
+<link rel="stylesheet" href="public.css">
+</head>
+<body>
+<header>
+  <div class="logo">JUGE<span>D'IMPRO</span></div>
+  <div class="pastille">🏆 Classement</div>
+</header>
+
+<main>
+  <section id="accueil" class="carte" hidden>
+    <h1>Classement d’un crew 🏆</h1>
+    <p>Entre le code du crew.</p>
+    <label>Code du crew <input id="code" maxlength="24" autocomplete="off" spellcheck="false" autocapitalize="characters"></label>
+    <button id="voir" class="go">VOIR LE CLASSEMENT</button>
+  </section>
+
+  <section id="tableau" hidden>
+    <div class="carte">
+      <div class="nav-semaine">
+        <button id="precedente" class="petit-rond" title="Semaine précédente">◀</button>
+        <div><h1 id="titre"></h1><div id="sous-titre" class="astuce"></div></div>
+        <button id="suivante" class="petit-rond" title="Semaine suivante">▶</button>
+      </div>
+      <div id="defi" class="defi"></div>
+    </div>
+    <div class="carte">
+      <ol id="lignes" class="podium"><li class="astuce">Chargement…</li></ol>
+      <p id="maj" class="astuce"></p>
+    </div>
+    <p class="astuce centre">Pour jouer : l’outil Juge d’Impro, onglet Entraînement, « Rejoindre » avec le code du crew.</p>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../reseau.js"></script>
+<script src="../rythmes.js"></script>
+<script src="../jeu.js"></script>
+<script src="../classement.js"></script>
+<script src="tableau.js"></script>
+</body>
+</html>
