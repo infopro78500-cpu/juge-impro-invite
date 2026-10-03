@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Juge d'Impro · Invité</title>
+<meta name="description" content="Rejoins un featuring en ligne sur Juge d'Impro.">
+<link rel="stylesheet" href="invite.css">
+</head>
+<body>
+<header>
+  <div class="logo">JUGE<span>D'IMPRO</span></div>
+  <div class="pastille">🤝 Featuring en ligne</div>
+</header>
+
+<main>
+  <section id="accueil" class="carte">
+    <h1>Tu es invité sur un featuring 🎤</h1>
+    <p>Ouvre cette page dans <b>Chrome</b> ou <b>Edge</b> sur ordinateur et branche un <b>casque</b>.
+      L’hôte t’envoie l’instru, vous démarrez ensemble et l’outil annonce à qui c’est le tour.</p>
+    <label>Code de la salle <input id="code" maxlength="8" autocomplete="off" spellcheck="false"></label>
+    <label>Ton nom de rappeur <input id="nom" maxlength="30" autocomplete="nickname"></label>
+    <button id="rejoindre" class="go">REJOINDRE LA SALLE</button>
+    <p id="erreur" class="erreur" hidden></p>
+  </section>
+
+  <section id="salle" hidden>
+    <div class="barre">
+      <span id="statut" class="statut">Connexion…</span>
+      <span id="statut-instru" class="statut-instru"></span>
+      <label id="secours" class="secours" hidden>Instru pas reçue ? Charge la même :
+        <input type="file" id="instru-locale" accept="audio/*">
+      </label>
+      <label class="volume">🔊 <input type="range" id="volume" min="0" max="1" step="0.01" value="0.7"></label>
+      <select id="format" title="Format de la scène">
+        <option value="16:9">16:9</option>
+        <option value="9:16">9:16</option>
+      </select>
+      <button id="plein-ecran" class="petit" title="Plein écran">⛶</button>
+    </div>
+    <div class="vumetre" title="Niveau de ton micro"><div id="niveau"></div></div>
+    <div id="scene-boite" class="scene-boite"><canvas id="scene"></canvas></div>
+    <p class="astuce">🎧 Garde ton casque : ta voix part en direct chez l’hôte, qui juge et enregistre la session.</p>
+  </section>
+  <audio id="voix-hote" autoplay></audio>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="reseau.js"></script>
+<script src="tempo.js"></script>
+<script src="jeu.js"></script>
+<script src="scene.js"></script>
+<script src="invite.js"></script>
+</body>
+</html>
