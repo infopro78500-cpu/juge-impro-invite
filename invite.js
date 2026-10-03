@@ -18,6 +18,8 @@
   $('code').value = (params.get('salle') || '').toUpperCase();
   try { $('nom').value = localStorage.getItem('juge-impro-nom') || ''; } catch { /* stockage indisponible */ }
   if (!SR) erreur('Ouvre cette page dans Google Chrome ou Microsoft Edge sur ordinateur : la reconnaissance vocale n’est pas disponible dans ce navigateur.');
+  // Brave expose la reconnaissance vocale mais ne la fait pas fonctionner
+  else if (navigator.brave) erreur('Brave ne fait pas fonctionner la reconnaissance vocale : ouvre ce lien dans Google Chrome ou Microsoft Edge.');
 
   function erreur(msg) { $('erreur').hidden = !msg; $('erreur').textContent = msg || ''; }
   const statut = (texte) => { $('statut').textContent = texte; };
@@ -210,7 +212,10 @@
       }
       etat.interim = interim;
     };
-    reco.onerror = (e) => { if (e.error === 'not-allowed') statut('Micro refusé : autorise-le puis recharge la page.'); };
+    reco.onerror = (e) => {
+      if (e.error === 'not-allowed') statut('Micro refusé : autorise-le puis recharge la page.');
+      else if (e.error === 'network') statut('Reconnaissance vocale indisponible : vérifie ta connexion, et utilise Chrome ou Edge (pas Brave).');
+    };
     reco.onend = () => { if (etat.enCours) setTimeout(() => { try { reco.start(); } catch { /* déjà relancée */ } }, 100); };
     reco.start();
     etat.reco = reco;
