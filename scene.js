@@ -71,12 +71,15 @@
       const p = e.partie;
       const score = p ? p.score : 0;
       if (p && p.joueurs) return enteteFeaturing(e);
+      const fil = e.habillage && e.habillage.filigrane ? e.habillage.marque : null;
       if (vertical()) {
-        texte("JUGE D'IMPRO", W / 2, 90 * u, { taille: 44, align: 'center', couleur: C.or });
+        if (fil) signature(fil, W / 2, 90 * u, { taille: 44, align: 'center' });
+        else texte("JUGE D'IMPRO", W / 2, 90 * u, { taille: 44, align: 'center', couleur: C.or });
         texte(score.toLocaleString('fr-FR'), W / 2, 230 * u, { taille: 120, graisse: 900, align: 'center', ombre: 25 });
         texte(e.chrono || '', W / 2, 290 * u, { taille: 40, graisse: 700, align: 'center', couleur: e.chronoAlerte ? C.rose : C.doux });
       } else {
-        texte("JUGE D'IMPRO", 60 * u, 90 * u, { taille: 42, couleur: C.or });
+        if (fil) signature(fil, 60 * u, 90 * u, { taille: 42 });
+        else texte("JUGE D'IMPRO", 60 * u, 90 * u, { taille: 42, couleur: C.or });
         if (e.niveau) texte(`Niv. ${e.niveau.num} · ${e.niveau.titre}`, 60 * u, 132 * u, { taille: 26, graisse: 600, couleur: C.doux });
         texte(e.chrono || '', W / 2, 100 * u, { taille: 64, graisse: 800, align: 'center', couleur: e.chronoAlerte ? C.rose : C.texte });
         texte(score.toLocaleString('fr-FR'), W - 60 * u, 110 * u, { taille: 96, graisse: 900, align: 'right', ombre: 25 });
@@ -88,6 +91,7 @@
     function enteteFeaturing(e) {
       const p = e.partie;
       const n = p.joueurs.length;
+      if (e.habillage && e.habillage.filigrane && e.habillage.marque) signature(e.habillage.marque, 40 * u, 52 * u, { taille: 24 });
       const actif = p.feat && p.feat.actif != null ? p.feat.actif : -1;
       const yChrono = vertical() ? 80 * u : 70 * u;
       texte(e.chrono || '', W / 2, yChrono, { taille: vertical() ? 44 : 48, graisse: 800, align: 'center', couleur: e.chronoAlerte ? C.rose : C.texte });
@@ -455,6 +459,101 @@
     }
 
     // ---------- Écran titre ----------
+    // ---------- Tournoi : tableau (ou classement de l'open mic), prochain match, champion ----------
+    function ecranTournoi(e) {
+      const to = e.tournoi, v = vertical();
+      const marge = (e.public && e.public.qr ? 340 : 80) * u;
+      texte(`🏟️ ${to.nom.toUpperCase()}`, W / 2, (v ? 130 : 90) * u, { taille: v ? 54 : 50, graisse: 900, align: 'center', couleur: C.or, ombre: 24, maxL: W - 100 * u });
+      if (to.fini) {
+        texte('🏆 CHAMPION', W / 2, H * (v ? 0.36 : 0.38), { taille: v ? 60 : 56, graisse: 900, align: 'center', couleur: C.doux });
+        texte(to.champion.toUpperCase(), W / 2, H * (v ? 0.36 : 0.38) + 150 * u, { taille: v ? 130 : 150, graisse: 900, align: 'center', couleur: C.or, ombre: 60, maxL: W - 100 * u });
+        if (to.coeurPublic) texte(`📺 Coup de cœur du public : ${to.coeurPublic}`, W / 2, H * (v ? 0.36 : 0.38) + 250 * u, { taille: 40, graisse: 800, align: 'center', couleur: '#ff8c42', maxL: W - 100 * u });
+      } else if (to.format === 'elimination') {
+        if (v) {
+          // vertical : les matchs, tour par tour
+          let y = 240 * u;
+          for (const tour of to.tours) {
+            texte(tour.nom.toUpperCase(), W / 2, y, { taille: 30, graisse: 900, align: 'center', couleur: C.doux });
+            y += 56 * u;
+            for (const m of tour.matchs) {
+              const nom = (n) => n || (m.detail === 'exempt' ? '—' : '?');
+              texte(`${nom(m.a)}  VS  ${nom(m.b)}`, W / 2, y, { taille: 40, graisse: 800, align: 'center', couleur: m.vainqueur ? C.doux : C.texte, maxL: W - 120 * u });
+              if (m.vainqueur && m.detail !== 'exempt') texte(`→ ${m.vainqueur}`, W / 2, y + 42 * u, { taille: 28, graisse: 800, align: 'center', couleur: C.or });
+              y += (m.vainqueur && m.detail !== 'exempt' ? 96 : 60) * u;
+            }
+            y += 24 * u;
+          }
+        } else {
+          // horizontal : le tableau, une colonne par tour, puis le champion
+          const cols = to.tours.length + 1, x0 = 80 * u, largeur = (W - x0 - marge) / cols;
+          const haut = 150 * u, bas = H - 260 * u;
+          to.tours.forEach((tour, c) => {
+            const x = x0 + c * largeur;
+            texte(tour.nom.toUpperCase(), x + largeur * 0.45, haut, { taille: 24, graisse: 900, align: 'center', couleur: C.doux });
+            const n = tour.matchs.length, pas = (bas - haut - 40 * u) / n;
+            tour.matchs.forEach((m, i) => {
+              const y = haut + 40 * u + pas * i + pas / 2 - 50 * u;
+              rect(x, y, largeur * 0.9, 100 * u, 12, 'rgba(0,0,0,.45)');
+              [m.a, m.b].forEach((nom, k) => {
+                const gagne = nom && nom === m.vainqueur;
+                texte(nom || (m.detail === 'exempt' ? '—' : '…'), x + 16 * u, y + (k ? 82 : 38) * u, { taille: 28, graisse: gagne ? 900 : 700, couleur: gagne ? C.or : m.vainqueur ? C.doux : C.texte, maxL: largeur * 0.9 - 32 * u });
+              });
+            });
+          });
+          const xc = x0 + (cols - 1) * largeur;
+          texte('CHAMPION', xc + largeur * 0.45, haut, { taille: 24, graisse: 900, align: 'center', couleur: C.doux });
+          texte('🏆 ?', xc + largeur * 0.45, (haut + bas) / 2, { taille: 50, graisse: 900, align: 'center', couleur: C.or });
+        }
+      } else {
+        // open mic : classement de la soirée
+        const cl = to.classement || [];
+        let y = (v ? 260 : 190) * u;
+        texte('CLASSEMENT DE LA SOIRÉE', W / 2, y, { taille: 30, graisse: 900, align: 'center', couleur: C.doux });
+        y += 64 * u;
+        cl.slice(0, v ? 10 : 6).forEach((x, k) => {
+          texte(`${['🥇', '🥈', '🥉'][k] || k + 1}  ${x.nom}`, W / 2 - (v ? 420 : 500) * u, y, { taille: 42, graisse: 900, couleur: k === 0 ? C.or : C.texte, maxL: (v ? 560 : 640) * u });
+          texte(`${x.score.toLocaleString('fr-FR')} pts`, W / 2 + (v ? 420 : 500) * u, y, { taille: 40, graisse: 800, align: 'right', couleur: C.vert });
+          y += 64 * u;
+        });
+        if (!cl.length) texte('Personne n’est encore passé au micro', W / 2, y, { taille: 34, graisse: 700, align: 'center', couleur: C.doux });
+      }
+      const p = to.prochain;
+      if (p && !to.fini) {
+        texte(p.type === 'match' ? 'PROCHAIN MATCH' : 'AU MICRO', W / 2, H - (v ? 330 : 150) * u, { taille: 30, graisse: 900, align: 'center', couleur: C.rose });
+        texte(p.type === 'match' ? `${p.a}  VS  ${p.b}` : p.nom, W / 2, H - (v ? 230 : 70) * u, { taille: v ? 70 : 76, graisse: 900, align: 'center', couleur: C.texte, ombre: 30, maxL: W - marge - 100 * u });
+      }
+    }
+
+    // après la finale : le champion en haut de l'écran de fin
+    function championTournoi(e) {
+      const to = e.tournoi;
+      if (!to || !to.fini) return;
+      rect(0, 0, W, 112 * u, 0, '#ffcc00');
+      texte(`🏆 ${to.champion.toUpperCase()} REMPORTE « ${to.nom.toUpperCase()} »`, W / 2, 74 * u, { taille: vertical() ? 40 : 46, graisse: 900, align: 'center', couleur: '#16081f', maxL: W - 60 * u });
+    }
+
+    // vote du public (tournoi) par-dessus la scène : les voix arrivent en direct
+    function voteTournoi(e) {
+      const vo = e.tournoi && e.tournoi.vote;
+      if (!vo) return;
+      const v = vertical(), n = vo.choix.length;
+      const hauteurLigne = (n > 4 ? 48 : 64) * u;
+      const haut = 120 * u + Math.min(n, 10) * hauteurLigne, larg = Math.min(W - 80 * u, 1100 * u);
+      const x = (W - larg) / 2, y = (v ? H * 0.55 : H - haut - 40 * u);
+      rect(x, y, larg, haut, 22, 'rgba(10,8,18,.92)');
+      ctx.save(); ctx.strokeStyle = '#ff8c42'; ctx.lineWidth = 4 * u; ctx.beginPath(); ctx.roundRect(x, y, larg, haut, 22 * u); ctx.stroke(); ctx.restore();
+      texte(vo.fini ? '📺 RÉSULTAT DU VOTE' : `📺 ${vo.titre.toUpperCase()} · ${Math.ceil(vo.reste)} s`, W / 2, y + 56 * u, { taille: 34, graisse: 900, align: 'center', couleur: '#ff8c42', maxL: larg - 60 * u });
+      const total = vo.compte.reduce((a, b) => a + b, 0) || 1, max = Math.max(...vo.compte);
+      vo.choix.slice(0, 10).forEach((c, k) => {
+        const yy = y + 100 * u + k * hauteurLigne;
+        const part = vo.compte[k] / total;
+        rect(x + 40 * u, yy, larg - 80 * u, hauteurLigne - 14 * u, 10, 'rgba(255,255,255,.08)');
+        rect(x + 40 * u, yy, (larg - 80 * u) * part, hauteurLigne - 14 * u, 10, vo.fini && vo.compte[k] === max && max > 0 ? 'rgba(255,204,0,.55)' : 'rgba(255,140,66,.45)');
+        texte(c, x + 60 * u, yy + hauteurLigne * 0.6, { taille: n > 4 ? 26 : 32, graisse: 900, couleur: C.texte, maxL: larg * 0.6 });
+        texte(String(vo.compte[k]), x + larg - 60 * u, yy + hauteurLigne * 0.6, { taille: n > 4 ? 26 : 32, graisse: 900, align: 'right', couleur: C.texte });
+      });
+    }
+
     function ecranTitre(e) {
       const v = vertical();
       const cons = e.consignes || [];
@@ -533,7 +632,7 @@
       }
       if (f.noteIA != null) texte(`Juge IA : ${fmt(f.noteIA)}/20`, cx, yD + 10 * u, { taille: 32, graisse: 700, align: 'center', couleur: C.or });
       else if (f.iaEnCours) texte('Le juge IA délibère…', cx, yD + 10 * u, { taille: 30, graisse: 600, align: 'center', couleur: C.doux });
-      if (f.niveau) texte(`Niveau ${f.niveau.num} · ${f.niveau.titre}${f.niveauGagne ? '  ▲ NIVEAU SUPÉRIEUR !' : ''}`, cx, H - (v ? 120 : 40) * u,
+      if (f.niveau && !(e.habillage && e.habillage.outro)) texte(`Niveau ${f.niveau.num} · ${f.niveau.titre}${f.niveauGagne ? '  ▲ NIVEAU SUPÉRIEUR !' : ''}`, cx, H - (v ? 120 : 40) * u,
         { taille: 30, graisse: 800, align: 'center', couleur: f.niveauGagne ? C.or : C.doux });
     }
 
@@ -558,7 +657,7 @@
         else texte(details.join('  ·  '), x, yJ + 210 * u, { taille: 32, graisse: 700, align: 'center' });
       });
       texte(`Score du duo : ${f.score.toLocaleString('fr-FR')}`, cx, H - (v ? 260 : 110) * u, { taille: 36, graisse: 800, align: 'center', couleur: C.cyan });
-      if (f.niveau) texte(`Niveau ${f.niveau.num} · ${f.niveau.titre}`, cx, H - (v ? 140 : 40) * u, { taille: 28, graisse: 700, align: 'center', couleur: C.doux });
+      if (f.niveau && !(e.habillage && e.habillage.outro)) texte(`Niveau ${f.niveau.num} · ${f.niveau.titre}`, cx, H - (v ? 140 : 40) * u, { taille: 28, graisse: 700, align: 'center', couleur: C.doux });
     }
 
     function ecranFinBattle(e) {
@@ -598,7 +697,7 @@
         }
         y += (v ? 120 : 92) * u;
       });
-      if (f.niveau) texte(`Niveau ${f.niveau.num} · ${f.niveau.titre}`, cx, H - (v ? 140 : 30) * u, { taille: 26, graisse: 700, align: 'center', couleur: C.doux });
+      if (f.niveau && !(e.habillage && e.habillage.outro)) texte(`Niveau ${f.niveau.num} · ${f.niveau.titre}`, cx, H - (v ? 140 : 30) * u, { taille: 26, graisse: 700, align: 'center', couleur: C.doux });
     }
 
     const chrono = (s) => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`;
@@ -608,15 +707,122 @@
     function dessiner(e) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       fond(e);
-      if (!e.enCours && !e.fin) { ecranTitre(e); qrPublic(e, true); return; }
-      if (e.fin) { ecranFin(e); return; } // écran de fin épuré : c'est la carte de score à partager
+      if (!e.enCours && !e.fin) {
+        if (e.tournoi) ecranTournoi(e); else ecranTitre(e);
+        qrPublic(e, true);
+        voteTournoi(e);
+        return;
+      }
+      if (e.fin) { ecranFin(e); outro(e); championTournoi(e); voteTournoi(e); return; } // écran de fin épuré : c'est la carte de score à partager
       entete(e);
       jauges(e);
       bandeau(e);
-      if (e.partie && e.partie.studio) prompteur(e); else paroles(e);
+      if (e.partie && e.partie.studio) prompteur(e);
+      else if (e.habillage && e.habillage.sousTitres === 'reseaux') sousTitres(e);
+      else paroles(e);
       piste(e);
       popups(e);
       qrPublic(e, false);
+      intro(e);
+    }
+
+    // ---------- Habillage du MC : logo + @ (ou nom), intro, écran de fin, sous-titres façon réseaux ----------
+    function signature(m, x, y, { taille = 40, align = 'left', couleur = C.or, alpha = 1 } = {}) {
+      const txt = m.handle || m.nom || '';
+      ctx.font = police(taille, 900);
+      const largeurTexte = ctx.measureText(txt).width;
+      const cote = m.logo ? taille * 1.35 * u : 0;
+      const ecart = m.logo && txt ? 14 * u : 0;
+      const total = cote + ecart + largeurTexte;
+      let gauche = align === 'center' ? x - total / 2 : align === 'right' ? x - total : x;
+      if (m.logo) {
+        const hauteur = cote * (m.logo.height / m.logo.width || 1);
+        ctx.save(); ctx.globalAlpha = alpha;
+        ctx.drawImage(m.logo, gauche, y - taille * 0.85 * u - (hauteur - taille * u) / 2, cote, hauteur);
+        ctx.restore();
+        gauche += cote + ecart;
+      }
+      if (txt) texte(txt, gauche, y, { taille, graisse: 900, couleur, alpha, ombre: 12 });
+    }
+
+    // intro (2,5 s au début de l'impro, donc au début de la vidéo) : le MC se présente
+    function intro(e) {
+      const hb = e.habillage;
+      if (!hb || !hb.intro || !e.partie || e.t > 2.6) return;
+      const a = e.t < 1.8 ? 1 : Math.max(0, (2.6 - e.t) / 0.8);
+      const m = hb.marque, v = vertical();
+      ctx.save();
+      ctx.globalAlpha = 0.88 * a;
+      ctx.fillStyle = '#07060c';
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+      const cy = H * (v ? 0.4 : 0.42);
+      if (m.logo) {
+        const cote = (v ? 280 : 220) * u, hauteur = cote * (m.logo.height / m.logo.width || 1);
+        ctx.save(); ctx.globalAlpha = a;
+        ctx.drawImage(m.logo, W / 2 - cote / 2, cy - hauteur - 30 * u, cote, hauteur);
+        ctx.restore();
+      }
+      texte((m.nom || '').toUpperCase(), W / 2, cy + 70 * u, { taille: v ? 110 : 120, graisse: 900, align: 'center', couleur: C.texte, ombre: 40, alpha: a, maxL: W - 100 * u });
+      if (m.handle) texte(m.handle, W / 2, cy + 140 * u, { taille: 44, graisse: 800, align: 'center', couleur: C.or, alpha: a });
+      const p = e.partie;
+      texte(`${p.modeIcone} ${p.modeNom.toUpperCase()}${e.grille ? ` · ${Math.round(e.grille.bpm)} BPM` : ''}`, W / 2, cy + 210 * u, { taille: 34, graisse: 800, align: 'center', couleur: C.doux, alpha: a });
+    }
+
+    // écran de fin : bandeau avec la marque et la phrase de fin
+    function outro(e) {
+      const hb = e.habillage;
+      if (!hb || !hb.outro) return false;
+      const v = vertical(), haut = (v ? 150 : 88) * u, y0 = H - haut - (v ? 60 : 8) * u;
+      rect(40 * u, y0, W - 80 * u, haut, 18, 'rgba(0,0,0,.55)');
+      if (v) {
+        signature(hb.marque, W / 2, y0 + 60 * u, { taille: 40, align: 'center' });
+        if (hb.cta) texte(hb.cta, W / 2, y0 + 118 * u, { taille: 32, graisse: 800, align: 'center', couleur: C.texte, maxL: W - 140 * u });
+      } else {
+        signature(hb.marque, 70 * u, y0 + 58 * u, { taille: 36 });
+        if (hb.cta) texte(hb.cta, W - 70 * u, y0 + 58 * u, { taille: 32, graisse: 800, align: 'right', couleur: C.texte, maxL: W * 0.5 });
+      }
+      return true;
+    }
+
+    // sous-titres façon réseaux : la phrase en cours, en grand, contourée, rimes en couleur
+    function sousTitres(e) {
+      const lignes = e.lignes || [];
+      const l = lignes[lignes.length - 1];
+      const v = vertical();
+      const taille = v ? 66 : 58, largeur = W - (v ? 120 : 260) * u, yBas = (v ? 1140 : 780) * u;
+      if (!l) {
+        if (e.enCours) texte('🎤', W / 2, yBas, { taille, align: 'center', couleur: C.doux });
+        return;
+      }
+      ctx.font = police(taille, 900);
+      const espace = ctx.measureText(' ').width;
+      const rangs = [[]];
+      let larg = 0;
+      for (const m of l.mots) {
+        const w = ctx.measureText(m.texte).width;
+        if (larg + w > largeur && rangs[rangs.length - 1].length) { rangs.push([]); larg = 0; }
+        rangs[rangs.length - 1].push({ ...m, w });
+        larg += w + espace;
+      }
+      const visibles = rangs.slice(-2);
+      const pas = taille * 1.25 * u;
+      visibles.forEach((r, k) => {
+        const total = r.reduce((t, m) => t + m.w, 0) + espace * (r.length - 1);
+        let x = W / 2 - total / 2;
+        const y = yBas - (visibles.length - 1 - k) * pas;
+        for (const m of r) {
+          ctx.save();
+          ctx.font = police(taille, 900);
+          ctx.lineJoin = 'round'; ctx.lineWidth = 10 * u; ctx.strokeStyle = '#000';
+          ctx.globalAlpha = l.interim ? 0.75 : 1;
+          ctx.strokeText(m.texte, x, y);
+          ctx.fillStyle = m.couleur || '#ffffff';
+          ctx.fillText(m.texte, x, y);
+          ctx.restore();
+          x += m.w + espace;
+        }
+      });
     }
 
     // ---------- Export ----------

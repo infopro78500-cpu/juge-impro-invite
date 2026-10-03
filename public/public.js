@@ -12,7 +12,7 @@
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const monId = Reseau.nouveauCode(10);
   const mesMots = [];
-  let canal = null, dernierEnvoi = 0, flammes = 0, minuterieFlamme = null;
+  let canal = null, dernierEnvoi = 0, flammes = 0, minuterieFlamme = null, vote = null;
 
   try { $('pseudo').value = localStorage.getItem('juge-impro-pseudo') || ''; } catch { /* stockage indisponible */ }
   $('pseudo').addEventListener('change', () => { try { localStorage.setItem('juge-impro-pseudo', $('pseudo').value.trim()); } catch { /* stockage indisponible */ } });
@@ -47,6 +47,19 @@
     if (ev === 'etat') {
       $('mot-ecran').textContent = x.enCours ? (x.mot ? x.mot.toUpperCase() : '…') : 'pas d’impro en cours';
       $('compteurs').textContent = `${x.enCours ? `🎤 ${x.mode || 'Impro'} en cours` : '⏸️ Le rappeur se prépare'} · ${x.recus || 0} mot(s) reçu(s) · 🔥 ${x.flammes || 0}${x.file ? ` · ${x.file} en attente` : ''}`;
+    } else if (ev === 'vote') {
+      if (!vote || vote.id !== x.id) vote = { id: x.id, choix: x.choix, moi: null };
+      $('vote').hidden = false;
+      $('vote-titre').textContent = `📺 ${x.titre || 'Vote du public'}`;
+      $('vote-choix').innerHTML = x.choix.map((c, k) => `<button class="go vote-bouton ${vote.moi === k ? 'choisi' : ''}" data-choix="${k}">${esc(c)}</button>`).join('');
+      $('vote-info').textContent = vote.moi != null ? `Tu as voté pour ${x.choix[vote.moi]} (tu peux encore changer d’avis) · ${x.reste} s` : `Vote avant la fin : encore ${x.reste} s`;
+      if (navigator.vibrate && vote.moi == null) navigator.vibrate(80);
+    } else if (ev === 'resultat-vote') {
+      if (!vote || vote.id !== x.id) return;
+      const max = Math.max(...x.compte);
+      $('vote-choix').innerHTML = x.choix.map((c, k) => `<div class="vote-resultat ${x.compte[k] === max && max > 0 ? 'gagne' : ''}">${esc(c)} <b>${x.compte[k]}</b></div>`).join('');
+      $('vote-info').textContent = 'Vote terminé, merci !';
+      setTimeout(() => { if (vote && vote.id === x.id) $('vote').hidden = true; }, 15000);
     } else if (ev === 'statut') {
       const m = mesMots.find((y) => y.id === x.id);
       if (!m) return;
@@ -74,6 +87,16 @@
     $('mot').value = '';
     message('Envoyé ! Regarde le live 👀');
     rendre();
+  });
+
+  // vote : un choix par téléphone (on peut changer d'avis tant que le vote est ouvert)
+  $('vote-choix').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-choix]');
+    if (!b || !vote || !canal) return;
+    vote.moi = +b.dataset.choix;
+    canal.envoyer('votant', { de: monId, id: vote.id, choix: vote.moi });
+    $('vote-choix').querySelectorAll('[data-choix]').forEach((x) => x.classList.toggle('choisi', x === b));
+    $('vote-info').textContent = `Tu as voté pour ${b.textContent} (tu peux encore changer d’avis).`;
   });
 
   // les flammes partent groupées, une fois par seconde (3 au plus)

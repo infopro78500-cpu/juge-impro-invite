@@ -62,3 +62,11 @@ main { padding: 16px; max-width: 520px; margin: 0 auto; display: flex; flex-dire
 .podium .pos { grid-row: span 2; font-size: 22px; font-weight: 900; text-align: center; }
 .podium .pts { font-weight: 900; color: var(--accent); }
 .podium .astuce { grid-column: 2 / span 2; }
+
+/* Vote du public */
+.vote { border-color: var(--orange); }
+.vote-choix { display: flex; flex-direction: column; gap: 10px; }
+.vote-bouton { background: var(--panneau2); color: var(--texte); border: 2px solid var(--bord); }
+.vote-bouton.choisi { background: var(--orange); color: #000; border-color: var(--orange); }
+.vote-resultat { display: flex; justify-content: space-between; background: var(--panneau2); border-radius: 12px; padding: 12px 14px; font-weight: 800; }
+.vote-resultat.gagne { outline: 2px solid var(--accent); color: var(--accent); }

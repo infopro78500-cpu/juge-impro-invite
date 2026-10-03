@@ -181,7 +181,7 @@
     const sb = root.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseCle, { auth: { persistSession: false } });
     if (ping) sb.rpc('ping').then(() => { }, () => { });
     const canal = sb.channel(`juge-impro:public:${code}`, { config: { broadcast: { self: false } } });
-    for (const ev of ['mot', 'flamme', 'statut', 'etat', 'bonjour']) {
+    for (const ev of ['mot', 'flamme', 'statut', 'etat', 'bonjour', 'vote', 'votant', 'resultat-vote']) {
       canal.on('broadcast', { event: ev }, ({ payload }) => surEvenement(ev, payload || {}));
     }
     canal.subscribe((st) => surStatut(st));
