@@ -48,7 +48,36 @@
     poesie: { nom: 'Poétique', consigne: 'Images travaillées, vocabulaire lyrique' }
   };
 
+  // Sons de fin de mot pour l'exercice « Chaîne de rimes » (codes du moteur phonétique)
+  const SONS_CIBLES = [
+    { cible: 'i', libelle: '[i]', exemples: 'nuit, vie, cri' }, { cible: 'e', libelle: '[é]', exemples: 'été, liberté, jamais' },
+    { cible: 'A', libelle: '[an]', exemples: 'temps, sang, grand' }, { cible: 'O', libelle: '[on]', exemples: 'son, nom, raison' },
+    { cible: 'u', libelle: '[ou]', exemples: 'fou, tout, debout' }, { cible: 'eR', libelle: '[èr]', exemples: 'terre, guerre, lumière' },
+    { cible: 'ij', libelle: '[ille]', exemples: 'fille, famille, brille' }, { cible: 'aR', libelle: '[ar]', exemples: 'gare, art, retard' },
+    { cible: 'aZ', libelle: '[age]', exemples: 'rage, page, voyage' }, { cible: 'abl', libelle: '[able]', exemples: 'table, diable, sable' },
+    { cible: 'wa', libelle: '[oi]', exemples: 'moi, voix, froid' }, { cible: '2R', libelle: '[eur]', exemples: 'peur, cœur, douleur' }
+  ];
+  // Consonnes d'attaque pour l'exercice « Allitération »
+  const CONSONNES = [
+    { cible: 'p', libelle: '[p]', exemples: 'pierre, poing, paix' }, { cible: 'b', libelle: '[b]', exemples: 'balle, béton, bruit' },
+    { cible: 't', libelle: '[t]', exemples: 'tigre, temps, terre' }, { cible: 'd', libelle: '[d]', exemples: 'dalle, destin, douleur' },
+    { cible: 'k', libelle: '[k]', exemples: 'casse, cœur, crime' }, { cible: 'R', libelle: '[r]', exemples: 'rage, rue, rêve' },
+    { cible: 's', libelle: '[s]', exemples: 'salle, sang, silence' }, { cible: 'f', libelle: '[f]', exemples: 'feu, folie, frère' },
+    { cible: 'm', libelle: '[m]', exemples: 'mur, mère, mort' }
+  ];
+
   const melanger = (arr) => [...arr].sort(() => Math.random() - 0.5);
+
+  // Tirage reproductible (défi du jour : le même pour tout le monde ce jour-là)
+  function avecGraine(graine, fn) {
+    let h = 2166136261;
+    for (const c of String(graine)) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+    let a = h >>> 0;
+    const aleatoire = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const original = Math.random;
+    Math.random = aleatoire; // le temps d'un tirage synchrone seulement
+    try { return fn(); } finally { Math.random = original; }
+  }
   const auHasard = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const tirerMots = (n = 3) => melanger(MOTS).slice(0, n);
 
@@ -60,7 +89,9 @@
     multis: { nom: 'Chasseur de multis', tirer: () => ({ objectif: 3 }) },
     riches: { nom: 'Rimes riches', tirer: () => ({ objectif: 5 }) },
     zeroBlanc: { nom: 'Zéro blanc', tirer: () => ({}) },
-    flow: { nom: 'Calé sur le temps', tirer: () => ({ objectif: 65 }) }
+    flow: { nom: 'Calé sur le temps', tirer: () => ({ objectif: 65 }) },
+    rimeCible: { nom: 'Chaîne de rimes', tirer: () => ({ son: auHasard(SONS_CIBLES), objectif: 6 }) },
+    allit: { nom: 'Allitération', tirer: () => ({ consonne: auHasard(CONSONNES), objectif: 5 }) }
   };
 
   const MODES = {
@@ -85,7 +116,8 @@
   const BADGES = {
     mots: '🧩 Mots placés', theme: '🗺️ Thème tenu', style: '🎭 Style respecté', multis: '🎯 Chasseur de multis',
     riches: '💎 Rimes riches', zeroBlanc: '🫁 Zéro blanc', flow: '🥁 Calé sur le temps', triple: '🎰 Triplé imposé',
-    survie: '💀 Survivant', rafale: '⚡ Rafale tenue', rafaleParfaite: '🌩️ Rafale parfaite'
+    survie: '💀 Survivant', rafale: '⚡ Rafale tenue', rafaleParfaite: '🌩️ Rafale parfaite',
+    rimeCible: '🔗 Chaîne de rimes', allit: '🔤 Allitération', defiDuJour: '📅 Défi du jour'
   };
 
   const correspond = (coeur, mot) => {
@@ -115,7 +147,9 @@
       multis: () => `Place ${c.objectif} rimes multisyllabiques`,
       riches: () => `Place ${c.objectif} rimes riches`,
       zeroBlanc: () => 'Aucun silence de plus de 2,5 s, jusqu’au bout',
-      flow: () => `Termine avec au moins ${c.objectif} % de précision rythmique`
+      flow: () => `Termine avec au moins ${c.objectif} % de précision rythmique`,
+      rimeCible: () => `Place ${c.objectif} mots différents qui finissent en ${c.son.libelle} (${c.son.exemples}…)`,
+      allit: () => `Place ${c.objectif} mots différents qui commencent par ${c.consonne.libelle} (${c.consonne.exemples}…)`
     }[id]();
   }
 
@@ -229,6 +263,26 @@
       return o;
     }
 
+    // Compte des mots différents qui passent un filtre phonétique (son final, consonne d'attaque)
+    function objCibles(id, libelle, texte, filtre, objectifN, bonus = 250) {
+      const trouves = new Set();
+      const o = objectif(id, libelle, texte, bonus, {
+        verifier: (res) => {
+          for (const t of res.tokens) {
+            if (t.outil || !t.voy.length || trouves.has(t.coeur) || !filtre(t)) continue;
+            trouves.add(t.coeur);
+            const gain = gagner(30, { hype: 6 });
+            popup(`${t.brut.toUpperCase()}  ${Math.min(trouves.size, objectifN)}/${objectifN}  +${gain}`, { couleur: '#c77dff', taille: 0.85 });
+          }
+          o.progression = `${Math.min(trouves.size, objectifN)}/${objectifN}`;
+          if (trouves.size >= objectifN) reussir(o);
+        },
+        terminer: () => rater(o, `${trouves.size}/${objectifN}`)
+      });
+      o.progression = `0/${objectifN}`;
+      return o;
+    }
+
     // ---------- Construction selon le mode ----------
     if (mode === 'defi') {
       const c = config;
@@ -239,6 +293,8 @@
       if (c.defi === 'riches') objCompteur('riches', 'Rimes riches', 'riches', c.objectif, 250);
       if (c.defi === 'zeroBlanc') objectif('zeroBlanc', 'Zéro blanc', 'aucun silence de plus de 2,5 s', 300);
       if (c.defi === 'flow') objectif('flow', 'Calé sur le temps', `${c.objectif} % de précision`, 300);
+      if (c.defi === 'rimeCible') objCibles('rimeCible', 'Chaîne de rimes', `mots en ${c.son.libelle}`, (t) => t.phSans.endsWith(c.son.cible), c.objectif);
+      if (c.defi === 'allit') objCibles('allit', 'Allitération', `mots en ${c.consonne.libelle}`, (t) => t.ph[0] === c.consonne.cible, c.objectif);
     } else if (mode === 'impose') {
       objStyle(config.style);
       objTheme(config.theme);
@@ -518,7 +574,7 @@
   }
 
   const api = {
-    creerPartie, MODES, DEFIS, STYLES, THEMES, MOTS, BADGES, RANGS,
+    creerPartie, MODES, DEFIS, STYLES, THEMES, MOTS, BADGES, RANGS, SONS_CIBLES, CONSONNES, avecGraine,
     consignes, texteDefi, tirerMots, paliersHype, multiplicateurDe
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

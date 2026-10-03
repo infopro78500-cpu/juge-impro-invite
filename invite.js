@@ -105,6 +105,13 @@
         etat.config = m;
         etat.nomHote = m.nomHote || etat.nomHote;
         majGrille();
+        if (m.boite) {
+          // instru générée sur place : rien à télécharger
+          const st = Rythmes.STYLES[m.boite.style];
+          $('statut-instru').textContent = `🥁 Boîte à rythmes · ${st ? st.nom : ''} · ${Math.round(m.boite.bpm)} BPM`;
+          $('secours').hidden = true;
+          etat.liaison.envoyer('instru-ok', {});
+        }
         break;
       case 'instru-debut':
         etat.morceaux = []; etat.recu = 0; etat.attendu = m;
@@ -166,7 +173,10 @@
     if (etat.decalage == null) etat.decalage = 0; // pas encore mesuré : on fait au mieux
     etat.ctx.resume();
     const delai = (m.tDepart - etat.decalage - performance.now()) / 1000; // en secondes
-    if (etat.instruBuffer) {
+    if (m.boite) {
+      if (!etat.boite) etat.boite = Rythmes.creer(etat.ctx, etat.gain);
+      etat.boite.demarrer(m.boite.bpm, m.boite.style, etat.ctx.currentTime + Math.max(0, delai));
+    } else if (etat.instruBuffer) {
       try { etat.source && etat.source.stop(); } catch { /* déjà arrêtée */ }
       const s = etat.ctx.createBufferSource();
       s.buffer = etat.instruBuffer;
@@ -184,6 +194,7 @@
   }
 
   function tempsInstru() {
+    if (etat.boite && etat.boite.enCours) return etat.boite.position() - (etat.ctx.outputLatency || 0);
     if (!etat.source || !etat.instruBuffer) return null;
     const t = etat.ctx.currentTime - etat.debutInstruCtx - (etat.ctx.outputLatency || 0);
     if (t < 0) return null;
@@ -227,7 +238,10 @@
     setTimeout(() => { try { reco && reco.stop(); } catch { /* déjà arrêtée */ } }, 1200);
     // comme chez l'hôte : l'instru continue 5 s sur l'écran de fin
     const source = etat.source;
-    setTimeout(() => { try { source && source.stop(); } catch { /* déjà arrêtée */ } }, 6500);
+    setTimeout(() => {
+      try { source && source.stop(); } catch { /* déjà arrêtée */ }
+      if (etat.boite) etat.boite.arreter();
+    }, 6500);
   }
 
   // Petit signal au changement de tour
@@ -278,7 +292,7 @@
       mode: { id: 'featuring', ...Jeu.MODES.featuring },
       consignes: [{ libelle: 'FEATURING EN LIGNE', valeur: `${etat.nomHote}  ×  ${etat.nom}`, sous: etat.liaison && etat.liaison.ouvert ? 'Connectés ✓' : 'Connexion…' }],
       fin: etat.fin,
-      consigne: avantDepart ? `Départ dans ${Math.ceil(-tSession)}…` : (etat.instruBuffer ? 'Prêt : l’hôte lance la session' : 'En attente de l’instru…')
+      consigne: avantDepart ? `Départ dans ${Math.ceil(-tSession)}…` : (etat.instruBuffer || etat.config.boite ? 'Prêt : l’hôte lance la session' : 'En attente de l’instru…')
     });
     requestAnimationFrame(boucle);
   }
