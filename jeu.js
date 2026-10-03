@@ -7,6 +7,7 @@
   const BLANC_S = 2.5;             // silence qui compte comme un blanc
   const FENETRE_PILE = 0.045;      // ±45 ms autour de la croche : « pile »
   const FENETRE_BIEN = 0.09;       // ±90 ms : « bien »
+  const LATENCE_RECO = 0.7;        // la reconnaissance vocale rend les mots avec un peu de retard
   const GRACE_RAFALE = 2.5;        // délai de la reconnaissance vocale : un mot dit juste avant la fin compte
 
   const multiplicateurDe = (combo) => combo >= 10 ? 4 : combo >= 6 ? 3 : combo >= 3 ? 2 : 1;
@@ -110,6 +111,10 @@
       nom: 'Featuring', icone: '🤝', description: 'À plusieurs sur la même prod : l’outil annonce les tours, chacun a son score.',
       tirer: () => ({ joueurs: ['MC 1', 'MC 2'], mesures: 8 })
     },
+    studio: {
+      nom: 'Prise studio', icone: '🎙️', description: 'Rappe un de tes brouillons : le prompteur défile en rythme, l’outil note ta diction et ton calage. Garde ta meilleure prise.',
+      tirer: () => ({ lignes: [], mesuresParLigne: 2, intro: 2 })
+    },
     battle: {
       nom: 'Battle', icone: '🥊', description: 'Deux MC s’affrontent en rounds ; le juge IA tranche chaque round comme un jury (sinon, les points).',
       tirer: () => ({ joueurs: ['MC 1', 'MC 2'], mesures: 16, rounds: 2 })
@@ -121,7 +126,7 @@
     mots: '🧩 Mots placés', theme: '🗺️ Thème tenu', style: '🎭 Style respecté', multis: '🎯 Chasseur de multis',
     riches: '💎 Rimes riches', zeroBlanc: '🫁 Zéro blanc', flow: '🥁 Calé sur le temps', triple: '🎰 Triplé imposé',
     survie: '💀 Survivant', rafale: '⚡ Rafale tenue', rafaleParfaite: '🌩️ Rafale parfaite',
-    rimeCible: '🔗 Chaîne de rimes', allit: '🔤 Allitération', defiDuJour: '📅 Défi du jour', battle: '🥊 Battle gagnée'
+    rimeCible: '🔗 Chaîne de rimes', allit: '🔤 Allitération', defiDuJour: '📅 Défi du jour', battle: '🥊 Battle gagnée', studio: '🎙️ Prise propre'
   };
 
   const correspond = (coeur, mot) => {
@@ -140,6 +145,10 @@
     if (mode === 'rafale') return [{ libelle: 'RAFALE', valeur: `Un mot toutes les ${config.mesures} mesures`, sous: config.mots ? 'Mots choisis par toi' : 'Mots tirés au sort' }];
     if (mode === 'survie') return [{ libelle: 'SURVIE', valeur: 'Garde le public avec toi', sous: 'Hype à zéro = éliminé' }];
     if (mode === 'featuring') return [{ libelle: 'FEATURING', valeur: (config.joueurs || []).join('  ×  '), sous: `${config.mesures} mesures chacun, à tour de rôle` }];
+    if (mode === 'studio') return [{
+      libelle: 'PRISE STUDIO', valeur: config.titre || 'Choisis un brouillon',
+      sous: config.lignes && config.lignes.length ? `${config.lignes.length} ligne(s) · ${config.mesuresParLigne} mesure(s) par ligne` : 'Écris ou assemble un brouillon dans la Matière'
+    }];
     if (mode === 'battle') return [{ libelle: 'BATTLE', valeur: (config.joueurs || []).slice(0, 2).join('  VS  '), sous: `${config.rounds} round(s) · ${config.mesures} mesures chacun` }];
     return [];
   }
@@ -320,6 +329,24 @@
           fini: false, evenements: [], dureeTotale: p.feat.depart + rounds * 2 * dureeTour
         };
       }
+    } else if (mode === 'studio') {
+      const uneMesure = grille ? 4 * grille.periode : 2.6;
+      const textes = (config.lignes || []).map((l) => String(l)).filter((l) => l.trim());
+      const dureeLigne = Math.max(1, config.mesuresParLigne || 2) * uneMesure;
+      const depart = (grille ? grille.offset : 0) + Math.max(1, config.intro || 2) * uneMesure;
+      // les mots attendus, découpés comme ceux qu'on entend (même normalisation, même phonétique)
+      const decoupe = root.Analyse ? root.Analyse.tokeniser(textes.map((texte) => ({ texte }))).tokens : [];
+      p.studio = {
+        uneMesure, dureeLigne, depart, ligne: -1, fini: false, diction: 0, calage: 0, note: null, cle: null,
+        dureeTotale: depart + textes.length * dureeLigne + uneMesure,
+        lignes: textes.map((texte, k) => ({ k, texte, t0: depart + k * dureeLigne, t1: depart + (k + 1) * dureeLigne, taux: 0, propre: false })),
+        attendus: decoupe.map((t) => ({ brut: t.brut, coeur: t.coeur, phSans: t.phSans, ligne: t.seg, dit: false, t: null }))
+      };
+      const o = objectif('studio', 'Texte tenu', '80 % des mots du brouillon', 200, {
+        verifier: (res) => verifierStudio(res),
+        terminer: () => { if (p.studio.diction >= 0.8) reussir(o); else rater(o, `${Math.round(p.studio.diction * 100)} % des mots`); }
+      });
+      o.progression = '0 %';
     } else if (mode === 'rafale') {
       const liste = config.mots && config.mots.length ? config.mots : melanger(MOTS);
       const duree = grille ? config.mesures * 4 * grille.periode : config.mesures * 2.6;
@@ -387,6 +414,110 @@
       f.reste = Math.max(0, debutSuivant - t);
       f.mesuresRestantes = Math.ceil(f.reste / uneMesure);
       if (b) f.round = Math.floor(idx / 2);
+    }
+
+    // ---------- Prise studio : le texte rappé comparé au brouillon ----------
+    function majStudio(t) {
+      const st = p.studio;
+      st.ligne = Math.min(st.lignes.length, Math.floor((t - st.depart) / st.dureeLigne));
+      if (!st.fini && t >= st.dureeTotale) {
+        st.fini = true;
+        popup('FIN DE LA PRISE', { couleur: '#00e5ff', taille: 1.2, duree: 2.5 });
+      }
+    }
+
+    // deux mots « pareils » : même mot, même son (homophones), ou à un son près (erreur de reconnaissance)
+    function memeMot(a, b) {
+      if (a.coeur === b.coeur || correspond(a.coeur, b.coeur) || correspond(b.coeur, a.coeur)) return true;
+      if (a.phSans && a.phSans === b.phSans) return true;
+      return a.phSans.length >= 4 && b.phSans.length >= 4 && aUnSonPres(a.phSans, b.phSans);
+    }
+    function aUnSonPres(a, b) {
+      if (Math.abs(a.length - b.length) > 1) return false;
+      let i = 0, j = 0, diff = 0;
+      while (i < a.length && j < b.length) {
+        if (a[i] === b[j]) { i++; j++; continue; }
+        if (++diff > 1) return false;
+        if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+      }
+      return diff + (a.length - i) + (b.length - j) <= 1;
+    }
+
+    // Plus longue suite de mots du brouillon retrouvés dans l'ordre (les ad-libs et les oublis sont tolérés)
+    function aligner(attendus, dits) {
+      const n = attendus.length, m = dits.length;
+      const egal = attendus.map((a) => dits.map((b) => memeMot(a, b)));
+      const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+      for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+        L[i][j] = egal[i][j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+      const paires = [];
+      let i = 0, j = 0;
+      while (i < n && j < m) {
+        if (egal[i][j] && L[i][j] === L[i + 1][j + 1] + 1) { paires.push([i, j]); i++; j++; }
+        else if (L[i + 1][j] >= L[i][j + 1]) i++; else j++;
+      }
+      return paires;
+    }
+
+    function verifierStudio(res) {
+      const st = p.studio;
+      const cle = res.tokens.length + ':' + (res.tokens.length ? res.tokens[res.tokens.length - 1].coeur : '');
+      if (cle === st.cle) return;
+      st.cle = cle;
+      // instant estimé de chaque mot entendu : réparti sur la durée de sa phrase
+      const parPhrase = new Map();
+      for (const t of res.tokens) {
+        if (!parPhrase.has(t.seg)) parPhrase.set(t.seg, []);
+        parPhrase.get(t.seg).push(t);
+      }
+      const instant = new Map();
+      for (const l of parPhrase.values()) {
+        const t1 = l[0].temps, tm = l[0].tMilieu;
+        if (t1 == null || tm == null) continue;
+        const t0 = 2 * tm - t1;
+        l.forEach((t, k) => instant.set(t.i, t0 + (t1 - t0) * (k + 0.5) / l.length - LATENCE_RECO));
+      }
+      for (const a of st.attendus) { a.dit = false; a.t = null; }
+      for (const [i, j] of aligner(st.attendus, res.tokens)) {
+        st.attendus[i].dit = true;
+        st.attendus[i].t = instant.get(res.tokens[j].i) ?? null;
+      }
+      for (const l of st.lignes) {
+        const mots = st.attendus.filter((a) => a.ligne === l.k);
+        l.taux = mots.length ? mots.filter((a) => a.dit).length / mots.length : 0;
+        if (l.taux >= 0.8 && !l.propre && !p.termine) {
+          l.propre = true;
+          const gain = gagner(25, { hype: 5 });
+          popup(`LIGNE ${l.k + 1} ✓  +${gain}`, { couleur: '#3ddc97', taille: 0.8, duree: 1.4 });
+        }
+      }
+      const dits = st.attendus.filter((a) => a.dit).length;
+      st.diction = st.attendus.length ? dits / st.attendus.length : 0;
+      const o = p.objectifs.find((x) => x.id === 'studio');
+      if (o) o.progression = `${Math.round(st.diction * 100)} %`;
+    }
+
+    // Note de la prise : diction (mots compris), calage des lignes sur le prompteur, précision rythmique
+    function bilanStudio() {
+      const st = p.studio;
+      const mesure = st.uneMesure;
+      for (const l of st.lignes) {
+        const mots = st.attendus.filter((a) => a.ligne === l.k);
+        const premier = mots.find((a) => a.dit && a.t != null);
+        l.ecart = premier ? Math.round((premier.t - l.t0) * 100) / 100 : null;
+        l.calage = premier ? Math.max(0, Math.min(1, 1 - Math.max(0, Math.abs(l.ecart) - 0.5 * mesure) / (1.5 * mesure))) : 0;
+        l.manques = mots.filter((a) => !a.dit).map((a) => a.brut);
+      }
+      st.calage = st.lignes.length ? st.lignes.reduce((t, l) => t + l.calage, 0) / st.lignes.length : 0;
+      const prec = tauxPrecision();
+      const rythme = prec != null ? Math.min(1, prec / 0.75) : st.calage;
+      st.note = Math.round(20 * (0.5 * st.diction + 0.3 * st.calage + 0.2 * rythme) * 10) / 10;
+      return {
+        note: st.note, diction: st.diction, calage: st.calage, precision: prec,
+        brouillonId: p.config.brouillonId || null, titre: p.config.titre || null,
+        interrompue: p.t < st.dureeTotale - mesure,
+        lignes: st.lignes.map((l) => ({ texte: l.texte, taux: l.taux, ecart: l.ecart, manques: l.manques }))
+      };
     }
 
     // ---------- Battle : verdict du jury pour chaque round ----------
@@ -496,7 +627,7 @@
           if (j === joueurDe(p.t)) j.comboMax = Math.max(j.comboMax, p.combo);
           e.sous = `${j.nom} · ${e.sous}`;
         }
-        if (e.gros || e.pts >= 10) popup(`${e.texte}  +${gain}`, { sous: e.sous, couleur: e.couleur, taille: e.pts >= 20 ? 1.15 : 1 });
+        if (!p.studio && (e.gros || e.pts >= 10)) popup(`${e.texte}  +${gain}`, { sous: e.sous, couleur: e.couleur, taille: e.pts >= 20 ? 1.15 : 1 });
         if (p.multiplicateur > avant) popup(`MULTIPLICATEUR ×${p.multiplicateur}`, { couleur: '#00e5ff', taille: 0.9 });
         p.marqueurs.push({ t: p.t, texte: e.texte, couleur: e.couleur });
       }
@@ -538,6 +669,7 @@
       }
       if (p.rafale) majRafale(t);
       if (p.feat) majFeaturing(t);
+      if (p.studio) majStudio(t);
 
       // Précision rythmique sur les attaques franches de la voix
       if (voix.attaque && p.grille && tInstru != null && voix.attaque.force >= 0.3) {
@@ -632,14 +764,15 @@
         battle = { rounds: p.battle.rounds, joues: roundEnCours + 1, resultats: [...p.battle.resultats], points: p.battle.points.map((x) => [...x]), ...bilanBattle() };
         vainqueur = battle.complet ? battle.vainqueurNom : vainqueur;
       }
+      const studio = p.studio ? bilanStudio() : null;
       return {
-        joueurs, vainqueur, battle,
+        joueurs, vainqueur, battle, studio,
         score: p.score, bonusCombo, comboMax: p.comboMax, blancs: p.blancs,
         precision: prec, hypeMoyenne: p.hypeTemps ? p.hypeCumul / p.hypeTemps : p.hype,
         mode: p.mode, modeNom: p.modeNom, modeIcone: p.modeIcone,
         objectifs: resumeObjectifs(), badges: [...p.badges],
         elimine: p.elimine, tElimine: p.tElimine,
-        rang: rang(res.stats.note)
+        rang: rang(studio ? studio.note : res.stats.note)
       };
     }
 

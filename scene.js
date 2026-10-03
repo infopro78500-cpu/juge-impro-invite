@@ -254,6 +254,67 @@
       }
     }
 
+    // ---------- Prompteur (prise studio) : le brouillon défile en rythme ----------
+    function prompteur(e) {
+      const st = e.partie.studio;
+      const v = vertical();
+      const z = v ? { x: 60 * u, y: 735 * u, w: W - 120 * u, h: 440 * u } : { x: 840 * u, y: 205 * u, w: W - 900 * u, h: 590 * u };
+      const n = st.lignes.length;
+      const avant = e.t < st.depart;
+      const fin = st.ligne >= n;
+      const courante = Math.max(0, Math.min(st.ligne, n - 1));
+      ctx.save();
+      ctx.beginPath(); ctx.rect(z.x - 10 * u, z.y, z.w + 20 * u, z.h); ctx.clip();
+      let y = z.y + 34 * u;
+      if (avant) {
+        const mesures = Math.ceil((st.depart - e.t) / st.uneMesure - 1e-6);
+        texte(`LE TEXTE ARRIVE DANS ${mesures} MESURE${mesures > 1 ? 'S' : ''}`, z.x, y, { taille: 28, graisse: 900, couleur: C.or, ombre: 16 });
+      } else if (!fin) texte(`LIGNE ${courante + 1}/${n}`, z.x, y, { taille: 26, graisse: 800, couleur: C.doux });
+      else texte('PRISE TERMINÉE', z.x, y, { taille: 28, graisse: 900, couleur: C.vert });
+      y += 26 * u;
+
+      // une ligne du brouillon, coupée à la largeur de la zone ; les mots déjà dits passent en vert
+      const ligne = (k, taille, alpha, etat) => {
+        if (k < 0 || k >= n) return;
+        const mots = st.attendus.filter((a) => a.ligne === k);
+        ctx.font = police(taille, 800);
+        const espace = ctx.measureText(' ').width;
+        let x = z.x;
+        y += taille * 1.3 * u;
+        for (const a of mots) {
+          const w = ctx.measureText(a.brut).width;
+          if (x > z.x && x + w > z.x + z.w) { x = z.x; y += taille * 1.3 * u; }
+          const couleur = a.dit ? C.vert : etat === 'passee' ? C.rose : C.texte;
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.font = police(taille, a.dit || etat === 'active' ? 900 : 700);
+          ctx.fillStyle = couleur;
+          if (a.dit && etat === 'active') { ctx.shadowColor = C.vert; ctx.shadowBlur = 16 * u; }
+          ctx.fillText(a.brut, x, y);
+          ctx.restore();
+          x += w + espace;
+        }
+        y += 14 * u;
+      };
+
+      if (!avant && courante > 0 && !fin) ligne(courante - 1, v ? 32 : 30, 0.5, 'passee');
+      if (fin) ligne(n - 1, v ? 32 : 30, 0.5, 'passee');
+      else {
+        ligne(courante, v ? 54 : 50, avant ? 0.75 : 1, avant ? 'future' : 'active');
+        // avancée dans la ligne en cours
+        if (!avant) {
+          const l = st.lignes[courante];
+          const frac = Math.max(0, Math.min(1, (e.t - l.t0) / st.dureeLigne));
+          rect(z.x, y, z.w, 8 * u, 4, 'rgba(255,255,255,.12)');
+          rect(z.x, y, z.w * frac, 8 * u, 4, frac > 0.8 ? C.rose : C.cyan);
+          y += 24 * u;
+        }
+        ligne(courante + 1, v ? 36 : 34, 0.55, 'future');
+        ligne(courante + 2, v ? 36 : 34, 0.3, 'future');
+      }
+      ctx.restore();
+    }
+
     // ---------- Piste rythmique ----------
     function piste(e) {
       const p = e.partie;
@@ -399,7 +460,13 @@
       if (f.elimine) texte(`💀 ÉLIMINÉ À ${chrono(f.tElimine)}`, cx, yRang + (v ? 270 : 230) * u, { taille: 40, graisse: 900, align: 'center', couleur: C.rose, ombre: 20 });
       else if (f.record) texte('★ NOUVEAU RECORD ★', cx, yRang + (v ? 270 : 230) * u, { taille: 40, graisse: 900, align: 'center', couleur: C.or, ombre: 30 });
 
-      const stats = [
+      const pct = (x) => (x != null ? `${Math.round(x * 100)} %` : '–');
+      const stats = f.studio ? [
+        ['NOTE DE LA PRISE', `${fmt(f.studio.note)}/20`],
+        ['DICTION', pct(f.studio.diction)],
+        ['CALAGE', pct(f.studio.calage)],
+        ['PRÉCISION', pct(f.studio.precision)]
+      ] : [
         ['NOTE', f.noteFinale != null ? `${fmt(f.noteFinale)}/20` : `${fmt(f.note)}/20`],
         ['COMBO MAX', String(f.comboMax)],
         ['PRÉCISION', f.precision != null ? `${Math.round(f.precision * 100)} %` : '–'],
@@ -509,7 +576,7 @@
       entete(e);
       jauges(e);
       bandeau(e);
-      paroles(e);
+      if (e.partie && e.partie.studio) prompteur(e); else paroles(e);
       piste(e);
       popups(e);
     }
