@@ -273,7 +273,7 @@
         popups: snap.popups.map((x) => ({ ...x, t0: snap.t - x.age })).filter((x) => snap.t + age - x.t0 < x.duree),
         marqueurs: snap.marqueurs.map((m) => ({ ...m, t: snap.t - m.age })),
         feat: snap.feat ? { ...snap.feat, reste: Math.max(0, snap.feat.reste - age) } : null,
-        attaques: [], objectifs: [], rafale: null, modeNom: 'Featuring', modeIcone: '🤝',
+        attaques: [], objectifs: [], rafale: null, modeNom: snap.modeNom || 'Featuring', modeIcone: snap.modeIcone || '🤝',
         paliersHype: () => Jeu.paliersHype(snap.hype), tauxPrecision: () => null
       };
       if (snap.feat && snap.feat.actif !== etat.actifPrecedent) {
@@ -284,13 +284,17 @@
     const lignes = snap ? [...(snap.lignes || [])] : [];
     if (etat.interim.trim()) lignes.push({ mots: etat.interim.trim().split(/\s+/).map((texte) => ({ texte })), interim: true });
     const avantDepart = tSession != null && tSession < 0;
+    const battle = etat.config && etat.config.mode === 'battle';
+    const rounds = etat.config && etat.config.rounds;
     scene.dessiner({
       t: partie ? partie.t : (tSession || 0),
       enCours: Boolean(partie) && (etat.enCours || Boolean(snap)),
       partie, grille: etat.grille, tInstru: tempsInstru(), lignes,
       chrono: snap ? snap.chrono : '', chronoAlerte: snap ? snap.chronoAlerte : false,
-      mode: { id: 'featuring', ...Jeu.MODES.featuring },
-      consignes: [{ libelle: 'FEATURING EN LIGNE', valeur: `${etat.nomHote}  ×  ${etat.nom}`, sous: etat.liaison && etat.liaison.ouvert ? 'Connectés ✓' : 'Connexion…' }],
+      mode: battle ? { id: 'battle', ...Jeu.MODES.battle } : { id: 'featuring', ...Jeu.MODES.featuring },
+      consignes: [{
+        libelle: battle ? `BATTLE EN LIGNE${rounds ? ` · ${rounds} ROUND${rounds > 1 ? 'S' : ''}` : ''}` : 'FEATURING EN LIGNE',
+        valeur: `${etat.nomHote}  ${battle ? 'VS' : '×'}  ${etat.nom}`, sous: etat.liaison && etat.liaison.ouvert ? 'Connectés ✓' : 'Connexion…' }],
       fin: etat.fin,
       consigne: avantDepart ? `Départ dans ${Math.ceil(-tSession)}…` : (etat.instruBuffer || etat.config.boite ? 'Prêt : l’hôte lance la session' : 'En attente de l’instru…')
     });

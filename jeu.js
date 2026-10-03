@@ -109,6 +109,10 @@
     featuring: {
       nom: 'Featuring', icone: '🤝', description: 'À plusieurs sur la même prod : l’outil annonce les tours, chacun a son score.',
       tirer: () => ({ joueurs: ['MC 1', 'MC 2'], mesures: 8 })
+    },
+    battle: {
+      nom: 'Battle', icone: '🥊', description: 'Deux MC s’affrontent en rounds ; le juge IA tranche chaque round comme un jury (sinon, les points).',
+      tirer: () => ({ joueurs: ['MC 1', 'MC 2'], mesures: 16, rounds: 2 })
     }
   };
 
@@ -117,7 +121,7 @@
     mots: '🧩 Mots placés', theme: '🗺️ Thème tenu', style: '🎭 Style respecté', multis: '🎯 Chasseur de multis',
     riches: '💎 Rimes riches', zeroBlanc: '🫁 Zéro blanc', flow: '🥁 Calé sur le temps', triple: '🎰 Triplé imposé',
     survie: '💀 Survivant', rafale: '⚡ Rafale tenue', rafaleParfaite: '🌩️ Rafale parfaite',
-    rimeCible: '🔗 Chaîne de rimes', allit: '🔤 Allitération', defiDuJour: '📅 Défi du jour'
+    rimeCible: '🔗 Chaîne de rimes', allit: '🔤 Allitération', defiDuJour: '📅 Défi du jour', battle: '🥊 Battle gagnée'
   };
 
   const correspond = (coeur, mot) => {
@@ -136,6 +140,7 @@
     if (mode === 'rafale') return [{ libelle: 'RAFALE', valeur: `Un mot toutes les ${config.mesures} mesures`, sous: config.mots ? 'Mots choisis par toi' : 'Mots tirés au sort' }];
     if (mode === 'survie') return [{ libelle: 'SURVIE', valeur: 'Garde le public avec toi', sous: 'Hype à zéro = éliminé' }];
     if (mode === 'featuring') return [{ libelle: 'FEATURING', valeur: (config.joueurs || []).join('  ×  '), sous: `${config.mesures} mesures chacun, à tour de rôle` }];
+    if (mode === 'battle') return [{ libelle: 'BATTLE', valeur: (config.joueurs || []).slice(0, 2).join('  VS  '), sous: `${config.rounds} round(s) · ${config.mesures} mesures chacun` }];
     return [];
   }
 
@@ -301,12 +306,20 @@
       objMots(config.mots);
     } else if (mode === 'survie') {
       objectif('survie', 'Survie', 'garde la hype au-dessus de zéro', 300);
-    } else if (mode === 'featuring') {
+    } else if (mode === 'featuring' || mode === 'battle') {
       const noms = (config.joueurs || []).filter(Boolean);
-      p.joueurs = (noms.length >= 2 ? noms : ['MC 1', 'MC 2']).map((nom) => ({ nom, score: 0, comboMax: 0, evenements: 0 }));
+      p.joueurs = (noms.length >= 2 ? noms : ['MC 1', 'MC 2']).slice(0, mode === 'battle' ? 2 : 4)
+        .map((nom) => ({ nom, score: 0, comboMax: 0, evenements: 0 }));
       const dureeTour = grille ? config.mesures * 4 * grille.periode : config.mesures * 2.6;
       // les tours démarrent sur le premier temps fort de l'instru
       p.feat = { dureeTour, depart: grille ? grille.offset : 0, indexTour: -1 };
+      if (mode === 'battle') {
+        const rounds = Math.max(1, Math.min(3, config.rounds || 2));
+        p.battle = {
+          rounds, resultats: new Array(rounds).fill(null), points: Array.from({ length: rounds }, () => [0, 0]),
+          fini: false, evenements: [], dureeTotale: p.feat.depart + rounds * 2 * dureeTour
+        };
+      }
     } else if (mode === 'rafale') {
       const liste = config.mots && config.mots.length ? config.mots : melanger(MOTS);
       const duree = grille ? config.mesures * 4 * grille.periode : config.mesures * 2.6;
@@ -316,33 +329,92 @@
     }
 
     // ---------- Featuring : à qui le tour ? ----------
-    function indexTour(t) { return Math.floor(Math.max(0, t - p.feat.depart) / p.feat.dureeTour); }
-    function joueurDe(t) { return p.joueurs ? p.joueurs[indexTour(t) % p.joueurs.length] : null; }
+    function indexTour(t) {
+      const idx = Math.floor(Math.max(0, t - p.feat.depart) / p.feat.dureeTour);
+      return p.battle ? Math.min(idx, p.battle.rounds * 2 - 1) : idx;
+    }
+    // En battle, celui qui ouvre change à chaque round : A-B, puis B-A, puis A-B
+    function ordreTour(idx) {
+      if (!p.battle) return idx % p.joueurs.length;
+      const premier = Math.floor(idx / 2) % 2;
+      return idx % 2 === 0 ? premier : 1 - premier;
+    }
+    function joueurDe(t) { return p.joueurs ? p.joueurs[ordreTour(indexTour(t))] : null; }
 
     function majFeaturing(t) {
       const f = p.feat;
-      const idx = indexTour(t);
-      const n = p.joueurs.length;
+      const brut = Math.floor(Math.max(0, t - f.depart) / f.dureeTour);
+      const b = p.battle;
+      // battle : le dernier tour terminé, la battle est finie (le dernier round part au jury)
+      if (b && brut >= b.rounds * 2) {
+        if (!b.fini) {
+          b.fini = true;
+          b.evenements.push({ type: 'finRound', round: b.rounds - 1 });
+          popup('FIN DE LA BATTLE', { sous: 'le jury délibère…', couleur: '#ff3d6e', taille: 1.3, duree: 3 });
+          p.sons.push('ding');
+        }
+        f.reste = 0;
+        return;
+      }
+      const idx = brut;
       if (idx !== f.indexTour) {
         f.indexTour = idx;
         f.prevenu = false;
         p.combo = 0;
         p.multiplicateur = 1;
-        const j = p.joueurs[idx % n];
-        popup(`🎤 À TOI : ${j.nom.toUpperCase()}`, { sous: idx === 0 ? 'c’est parti !' : `tour ${Math.floor(idx / n) + 1}`, couleur: '#00e5ff', taille: 1.35, duree: 2.2 });
+        const j = p.joueurs[ordreTour(idx)];
+        if (b && idx % 2 === 0) {
+          if (idx > 0) b.evenements.push({ type: 'finRound', round: idx / 2 - 1 });
+          popup(`🥊 ROUND ${idx / 2 + 1}`, { sous: `${j.nom} ouvre`, couleur: '#ff3d6e', taille: 1.5, duree: 2.2 });
+        } else {
+          popup(`🎤 À TOI : ${j.nom.toUpperCase()}`, {
+            sous: b ? 'réponds-lui !' : (idx === 0 ? 'c’est parti !' : `tour ${Math.floor(idx / p.joueurs.length) + 1}`),
+            couleur: '#00e5ff', taille: 1.35, duree: 2.2
+          });
+        }
         p.sons.push('tour');
       }
       const debutSuivant = f.depart + (idx + 1) * f.dureeTour;
       const uneMesure = p.grille ? 4 * p.grille.periode : 2.6;
-      if (!f.prevenu && t >= debutSuivant - uneMesure) {
+      const dernier = b && idx + 1 >= b.rounds * 2;
+      if (!f.prevenu && !dernier && t >= debutSuivant - uneMesure) {
         f.prevenu = true;
-        popup(`PRÉPARE-TOI : ${p.joueurs[(idx + 1) % n].nom.toUpperCase()}`, { couleur: '#8b8ba3', taille: 0.8, duree: 1.8 });
+        popup(`PRÉPARE-TOI : ${p.joueurs[ordreTour(idx + 1)].nom.toUpperCase()}`, { couleur: '#8b8ba3', taille: 0.8, duree: 1.8 });
         p.sons.push('prepare');
       }
-      f.actif = idx % n;
-      f.suivant = (idx + 1) % n;
+      f.actif = ordreTour(idx);
+      f.suivant = dernier ? null : ordreTour(idx + 1);
       f.reste = Math.max(0, debutSuivant - t);
       f.mesuresRestantes = Math.ceil(f.reste / uneMesure);
+      if (b) f.round = Math.floor(idx / 2);
+    }
+
+    // ---------- Battle : verdict du jury pour chaque round ----------
+    function resultatRound(r, res) {
+      const b = p.battle;
+      if (!b || r < 0 || r >= b.rounds || b.resultats[r]) return;
+      b.resultats[r] = res;
+      const nom = res.vainqueur == null ? 'ÉGALITÉ' : p.joueurs[res.vainqueur].nom.toUpperCase();
+      popup(`🏆 ROUND ${r + 1} : ${nom}`, { sous: res.commentaire ? res.commentaire.slice(0, 90) : '', couleur: '#ffcc00', taille: 1.2, duree: 3.2 });
+      p.sons.push('ding');
+    }
+    // round jugé sur les points (sans juge IA, ou si le jury ne répond pas)
+    function resultatParPoints(r) {
+      const [a, z] = p.battle.points[r];
+      return { vainqueur: a === z ? null : (a > z ? 0 : 1), commentaire: `${a} points contre ${z}`, source: 'points' };
+    }
+    function bilanBattle() {
+      const b = p.battle;
+      const victoires = [0, 0];
+      for (const r of b.resultats) if (r && r.vainqueur != null) victoires[r.vainqueur]++;
+      const complet = b.resultats.every(Boolean);
+      let vainqueur = null, departage = null;
+      // égalité de rounds : les notes du jury IA départagent, puis les points du jeu
+      const notes = [0, 1].map((k) => b.resultats.reduce((t, r) => t + (r && r.notes ? Number(r.notes[k]) || 0 : 0), 0));
+      if (victoires[0] !== victoires[1]) vainqueur = victoires[0] > victoires[1] ? 0 : 1;
+      else if (notes[0] !== notes[1]) { vainqueur = notes[0] > notes[1] ? 0 : 1; departage = 'notes'; }
+      else if (p.joueurs[0].score !== p.joueurs[1].score) { vainqueur = p.joueurs[0].score > p.joueurs[1].score ? 0 : 1; departage = 'points'; }
+      return { victoires, complet, vainqueur, vainqueurNom: vainqueur == null ? null : p.joueurs[vainqueur].nom, departage, notes };
     }
 
     function nouveauMotRafale(t) {
@@ -416,6 +488,10 @@
           const tok = res.tokens[e.pos];
           const j = joueurDe(tok && tok.tMilieu != null ? tok.tMilieu : p.t);
           j.score += gain;
+          if (p.battle) {
+            const r = Math.min(p.battle.rounds - 1, Math.floor(indexTour(tok && tok.tMilieu != null ? tok.tMilieu : p.t) / 2));
+            p.battle.points[r][p.joueurs.indexOf(j)] += gain;
+          }
           j.evenements++;
           if (j === joueurDe(p.t)) j.comboMax = Math.max(j.comboMax, p.combo);
           e.sous = `${j.nom} · ${e.sous}`;
@@ -546,8 +622,18 @@
         const tri = [...joueurs].sort((a, b) => b.score - a.score);
         vainqueur = tri[0].score > tri[1].score ? tri[0].nom : null; // null = égalité
       } else p.score += bonusCombo;
+      let battle = null;
+      if (p.battle) {
+        // battle arrêtée avant la fin : le round en cours part quand même au jury
+        const roundEnCours = Math.min(p.battle.rounds - 1, Math.floor(indexTour(p.t) / 2));
+        if (!p.battle.fini && !p.battle.evenements.some((e) => e.round === roundEnCours)) {
+          p.battle.evenements.push({ type: 'finRound', round: roundEnCours });
+        }
+        battle = { rounds: p.battle.rounds, joues: roundEnCours + 1, resultats: [...p.battle.resultats], points: p.battle.points.map((x) => [...x]), ...bilanBattle() };
+        vainqueur = battle.complet ? battle.vainqueurNom : vainqueur;
+      }
       return {
-        joueurs, vainqueur,
+        joueurs, vainqueur, battle,
         score: p.score, bonusCombo, comboMax: p.comboMax, blancs: p.blancs,
         precision: prec, hypeMoyenne: p.hypeTemps ? p.hypeCumul / p.hypeTemps : p.hype,
         mode: p.mode, modeNom: p.modeNom, modeIcone: p.modeIcone,
@@ -569,6 +655,7 @@
 
     return Object.assign(p, {
       surAnalyse, tick, terminer, rang, tauxPrecision, verdictStyleIA, resumeObjectifs, joueurDe,
+      resultatRound, resultatParPoints, bilanBattle, indexTour,
       paliersHype: () => paliersHype(p.hype)
     });
   }

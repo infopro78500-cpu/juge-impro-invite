@@ -98,6 +98,25 @@
         if (on) rect(x - (W / n) * 0.35, y - 120 * u, (W / n) * 0.7, 150 * u, 18, 'rgba(0,229,255,.12)');
         texte(`${on ? '🎤 ' : ''}${j.nom.toUpperCase()}`, x, y - 70 * u, { taille: 30, graisse: 800, align: 'center', couleur: on ? C.cyan : C.doux, maxL: (W / n) * 0.85 });
         texte(j.score.toLocaleString('fr-FR'), x, y + 5 * u, { taille: n > 2 ? 64 : 80, graisse: 900, align: 'center', couleur: on ? C.texte : '#b8b8cc', ombre: on ? 20 : 0 });
+        if (p.battle) pastillesRounds(x, y + 48 * u, p.battle, k);
+      });
+      if (p.battle) {
+        const r = Math.min(p.battle.rounds, (p.feat && p.feat.round != null ? p.feat.round : 0) + 1);
+        texte(`🥊 ROUND ${r}/${p.battle.rounds}`, W / 2, yChrono + 46 * u, { taille: 28, graisse: 900, align: 'center', couleur: C.rose });
+      }
+    }
+
+    // Une pastille par round : dorée si gagné par ce MC, grise si perdu ou nul, vide si pas encore jugé
+    function pastillesRounds(x, y, b, k) {
+      const pas = 34 * u;
+      b.resultats.forEach((r, i) => {
+        const cx = x + (i - (b.rounds - 1) / 2) * pas;
+        ctx.save();
+        ctx.beginPath(); ctx.arc(cx, y, 11 * u, 0, Math.PI * 2);
+        if (r && r.vainqueur === k) { ctx.fillStyle = C.or; ctx.shadowColor = C.or; ctx.shadowBlur = 14 * u; ctx.fill(); }
+        else if (r) { ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fill(); }
+        else { ctx.lineWidth = 3 * u; ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.stroke(); }
+        ctx.restore();
       });
     }
 
@@ -146,7 +165,8 @@
         rect(x, y, 8 * u, h, 4, C.cyan);
         texte('AU MICRO', x + 28 * u, y + 36 * u, { taille: 22, graisse: 800, couleur: C.doux });
         texte(p.joueurs[f.actif].nom.toUpperCase(), x + 28 * u, y + 92 * u, { taille: 54, graisse: 900, couleur: C.cyan, ombre: 20, maxL: w * 0.6 });
-        texte(`ensuite : ${p.joueurs[f.suivant].nom}`, x + w - 24 * u, y + 36 * u, { taille: 22, graisse: 700, align: 'right', couleur: C.doux, maxL: w * 0.4 });
+        const ensuite = f.suivant != null && p.joueurs[f.suivant] ? `ensuite : ${p.joueurs[f.suivant].nom}` : 'dernier passage';
+        texte(ensuite, x + w - 24 * u, y + 36 * u, { taille: 22, graisse: 700, align: 'right', couleur: f.suivant != null ? C.doux : C.rose, maxL: w * 0.4 });
         texte(`${f.mesuresRestantes} mes.`, x + w - 24 * u, y + 92 * u, { taille: 36, graisse: 900, align: 'right', couleur: f.mesuresRestantes <= 1 ? C.rose : C.texte });
         rect(x + 28 * u, y + h - 30 * u, w - 56 * u, 10 * u, 5, 'rgba(255,255,255,.12)');
         rect(x + 28 * u, y + h - 30 * u, (w - 56 * u) * Math.max(0, Math.min(1, f.reste / f.dureeTour)), 10 * u, 5, f.mesuresRestantes <= 1 ? C.rose : C.cyan);
@@ -367,6 +387,7 @@
       ctx.fillRect(0, 0, W, H);
       const v = vertical();
       texte("JUGE D'IMPRO", W / 2, (v ? 110 : 70) * u, { taille: v ? 52 : 40, graisse: 900, align: 'center', couleur: C.or });
+      if (f.battle) return ecranFinBattle(e);
       if (f.joueurs) return ecranFinFeaturing(e);
       const cx = W / 2;
       const yRang = v ? 640 * u : 420 * u;
@@ -434,6 +455,46 @@
       });
       texte(`Score du duo : ${f.score.toLocaleString('fr-FR')}`, cx, H - (v ? 260 : 110) * u, { taille: 36, graisse: 800, align: 'center', couleur: C.cyan });
       if (f.niveau) texte(`Niveau ${f.niveau.num} · ${f.niveau.titre}`, cx, H - (v ? 140 : 40) * u, { taille: 28, graisse: 700, align: 'center', couleur: C.doux });
+    }
+
+    function ecranFinBattle(e) {
+      const f = e.fin, b = f.battle;
+      const v = vertical();
+      const cx = W / 2;
+      const joues = b.joues || b.rounds;
+      const enAttente = b.resultats.slice(0, joues).some((r) => !r);
+      texte('🥊 BATTLE', cx, (v ? 250 : 150) * u, { taille: 40, graisse: 900, align: 'center', couleur: C.rose });
+      if (enAttente) {
+        // petits points qui défilent pendant la délibération
+        const points = '.'.repeat(1 + Math.floor((e.t * 2) % 3));
+        texte(`LE JURY DÉLIBÈRE${points}`, cx, (v ? 440 : 300) * u, { taille: v ? 64 : 76, graisse: 900, align: 'center', couleur: C.doux });
+      } else {
+        const libelle = !f.vainqueur ? 'ÉGALITÉ' : b.departage === 'notes' ? 'VAINQUEUR AUX NOTES DU JURY' : b.departage === 'points' ? 'VAINQUEUR AUX POINTS' : 'VAINQUEUR';
+        texte(libelle, cx, (v ? 370 : 230) * u, { taille: 34, graisse: 800, align: 'center', couleur: C.doux });
+        if (f.vainqueur) texte(f.vainqueur.toUpperCase(), cx, (v ? 490 : 335) * u, { taille: 110, graisse: 900, align: 'center', couleur: C.or, ombre: 50, maxL: W - 100 * u });
+      }
+      const yJ = (v ? 700 : 480) * u;
+      f.joueurs.forEach((j, k) => {
+        const x = W * (k + 0.5) / 2;
+        const gagne = !enAttente && j.nom === f.vainqueur;
+        rect(x - W * 0.21, yJ - 60 * u, W * 0.42, (v ? 340 : 250) * u, 20, gagne ? 'rgba(255,204,0,.12)' : 'rgba(255,255,255,.05)');
+        texte(j.nom.toUpperCase(), x, yJ, { taille: 36, graisse: 900, align: 'center', couleur: gagne ? C.or : C.texte, maxL: W * 0.38 });
+        const vict = (b.victoires || [0, 0])[k];
+        texte(String(vict), x, yJ + 105 * u, { taille: 92, graisse: 900, align: 'center', ombre: gagne ? 30 : 0, couleur: gagne ? C.or : C.texte });
+        texte(vict > 1 ? 'ROUNDS GAGNÉS' : 'ROUND GAGNÉ', x, yJ + 140 * u, { taille: 22, graisse: 800, align: 'center', couleur: C.doux });
+        texte(`${j.score.toLocaleString('fr-FR')} pts`, x, yJ + (v ? 230 : 175) * u, { taille: 30, graisse: 700, align: 'center', couleur: '#b8b8cc' });
+      });
+      let y = yJ + (v ? 380 : 255) * u;
+      b.resultats.slice(0, joues).forEach((r, k) => {
+        const qui = !r ? 'au jury…' : r.vainqueur == null ? 'égalité' : f.joueurs[r.vainqueur].nom;
+        texte(`ROUND ${k + 1} · ${qui.toUpperCase()}`, cx, y, { taille: 30, graisse: 900, align: 'center', couleur: r ? C.or : C.doux, maxL: W - 120 * u });
+        if (r && r.commentaire) {
+          const com = r.commentaire.length > 150 ? r.commentaire.slice(0, 147) + '…' : r.commentaire;
+          texte(`${r.source === 'ia' ? '🤖' : '🔢'} ${com}`, cx, y + 38 * u, { taille: 24, graisse: 600, align: 'center', couleur: C.doux, maxL: W - 120 * u });
+        }
+        y += (v ? 120 : 92) * u;
+      });
+      if (f.niveau) texte(`Niveau ${f.niveau.num} · ${f.niveau.titre}`, cx, H - (v ? 140 : 30) * u, { taille: 26, graisse: 700, align: 'center', couleur: C.doux });
     }
 
     const chrono = (s) => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`;
