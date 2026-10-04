@@ -7,7 +7,8 @@
   const MOT_VALIDE = /^[a-zàâäéèêëîïôöùûüÿçœæ][a-zàâäéèêëîïôöùûüÿçœæ'-]{1,23}$/;
   const ETATS = {
     envoi: '📨 envoyé…', file: '⏳ en file d’attente', affiche: '📺 à l’écran !', place: '✅ PLACÉ !',
-    expire: '⌛ pas placé cette fois', refuse: '🚫 refusé', retire: '🚫 écarté par le rappeur', silence: '❔ pas de réponse du live'
+    expire: '⌛ pas placé cette fois', refuse: '🚫 refusé', retire: '🚫 écarté par le rappeur', silence: '❔ pas de réponse du live',
+    echec: '⚠️ pas parti (connexion ?)'
   };
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const monId = Reseau.nouveauCode(10);
@@ -32,9 +33,9 @@
     $('salle').hidden = false;
     try {
       canal = Reseau.creerCanalPublic({
-        code: c, surEvenement,
+        code: c, role: 'spectateur', surEvenement,
         surStatut: (st) => {
-          if (st === 'SUBSCRIBED') { statut(`✅ Connecté au live · code ${c}`); canal.envoyer('bonjour', { de: monId }); }
+          if (st === 'SUBSCRIBED') { statut(`✅ Connecté au live · code ${c}`); envoyer('bonjour', { de: monId }); }
           else if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT') statut('Connexion impossible : vérifie ta connexion internet.');
         }
       });
@@ -42,11 +43,30 @@
   }
   const statut = (t) => { $('statut').textContent = t; };
   const message = (t) => { $('message').textContent = t; };
+  // envoi vers le rappeur seul (requête HTTP) ; renvoie une promesse qui échoue si le message n'est pas parti
+  const envoyer = (event, payload) => Promise.resolve(canal.envoyer(event, payload)).then((r) => {
+    if (r === 'error' || r === 'timed out' || (r && r.success === false)) throw new Error('envoi refusé');
+  });
+
+  // le sort de mes mots arrive dans le résumé du rappeur, avec celui des mots des autres
+  function appliquerStatut(id, etat, raison) {
+    const m = mesMots.find((y) => y.id === id);
+    if (!m || (m.etat === etat && m.raison === (raison || ''))) return false;
+    m.etat = etat;
+    m.raison = raison || '';
+    if (etat === 'place' && navigator.vibrate) navigator.vibrate([60, 40, 140]);
+    return true;
+  }
 
   function surEvenement(ev, x) {
     if (ev === 'etat') {
       $('mot-ecran').textContent = x.enCours ? (x.mot ? x.mot.toUpperCase() : '…') : 'pas d’impro en cours';
       $('compteurs').textContent = `${x.enCours ? `🎤 ${x.mode || 'Impro'} en cours` : '⏸️ Le rappeur se prépare'} · ${x.recus || 0} mot(s) reçu(s) · 🔥 ${x.flammes || 0}${x.file ? ` · ${x.file} en attente` : ''}`;
+      let change = false;
+      for (const s of Array.isArray(x.statuts) ? x.statuts : []) {
+        if (Array.isArray(s) && appliquerStatut(String(s[0]), String(s[1]), s[2] ? String(s[2]) : '')) change = true;
+      }
+      if (change) rendre();
     } else if (ev === 'vote') {
       if (!vote || vote.id !== x.id) vote = { id: x.id, choix: x.choix, moi: null };
       $('vote').hidden = false;
@@ -60,13 +80,6 @@
       $('vote-choix').innerHTML = x.choix.map((c, k) => `<div class="vote-resultat ${x.compte[k] === max && max > 0 ? 'gagne' : ''}">${esc(c)} <b>${x.compte[k]}</b></div>`).join('');
       $('vote-info').textContent = 'Vote terminé, merci !';
       setTimeout(() => { if (vote && vote.id === x.id) $('vote').hidden = true; }, 15000);
-    } else if (ev === 'statut') {
-      const m = mesMots.find((y) => y.id === x.id);
-      if (!m) return;
-      m.etat = x.etat;
-      m.raison = x.raison || '';
-      if (x.etat === 'place' && navigator.vibrate) navigator.vibrate([60, 40, 140]);
-      rendre();
     }
   }
 
@@ -81,9 +94,10 @@
     const id = Reseau.nouveauCode(12);
     const m = { id, mot, etat: 'envoi', raison: '' };
     mesMots.unshift(m);
-    canal.envoyer('mot', { id, de: monId, mot, pseudo: $('pseudo').value.trim().slice(0, 20) });
-    // sans réponse du live au bout de 6 s, la salle est sans doute fermée
-    setTimeout(() => { if (m.etat === 'envoi') { m.etat = 'silence'; rendre(); } }, 6000);
+    envoyer('mot', { id, de: monId, mot, pseudo: $('pseudo').value.trim().slice(0, 20) })
+      .catch(() => { if (m.etat === 'envoi') { m.etat = 'echec'; dernierEnvoi = 0; rendre(); } });
+    // sans réponse du live au bout de 8 s (le résumé arrive toutes les 1,5 à 3 s), la salle est sans doute fermée
+    setTimeout(() => { if (m.etat === 'envoi') { m.etat = 'silence'; rendre(); } }, 8000);
     $('mot').value = '';
     message('Envoyé ! Regarde le live 👀');
     rendre();
@@ -94,7 +108,8 @@
     const b = e.target.closest('[data-choix]');
     if (!b || !vote || !canal) return;
     vote.moi = +b.dataset.choix;
-    canal.envoyer('votant', { de: monId, id: vote.id, choix: vote.moi });
+    envoyer('votant', { de: monId, id: vote.id, choix: vote.moi })
+      .catch(() => { $('vote-info').textContent = 'Ton vote n’est pas parti : vérifie ta connexion et touche à nouveau ton choix.'; });
     $('vote-choix').querySelectorAll('[data-choix]').forEach((x) => x.classList.toggle('choisi', x === b));
     $('vote-info').textContent = `Tu as voté pour ${b.textContent} (tu peux encore changer d’avis).`;
   });
@@ -108,7 +123,7 @@
     void b.offsetWidth;
     b.classList.add('pulse');
     if (!minuterieFlamme) minuterieFlamme = setTimeout(() => {
-      canal.envoyer('flamme', { de: monId, n: flammes });
+      envoyer('flamme', { de: monId, n: flammes }).catch(() => { /* une flamme perdue n'est pas grave */ });
       flammes = 0;
       minuterieFlamme = null;
     }, 1000);

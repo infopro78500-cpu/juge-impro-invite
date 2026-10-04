@@ -174,20 +174,53 @@
     return `${base}?salle=${encodeURIComponent(code)}`;
   }
 
-  // Public en live : un canal de diffusion par salle. Les spectateurs y envoient des mots et des flammes,
-  // le rappeur y renvoie l'état du jeu. Rien n'est stocké : les messages ne font que passer.
-  function creerCanalPublic({ code, surEvenement, surStatut = () => { }, ping = false }) {
+  // Public en live : deux canaux par salle, pour que le trafic reste proportionnel au public.
+  // - « descendant » (juge-impro:public:CODE) : le rappeur y diffuse l'état du jeu, environ une fois
+  //   toutes les 1,5 à 3 s, et les votes. Les spectateurs y sont abonnés.
+  // - « montant » (juge-impro:public:CODE:scene) : les spectateurs y envoient mots, flammes et votes,
+  //   par requête HTTP et sans s'y abonner. Seul le rappeur l'écoute.
+  // Supabase compte chaque message une fois à l'envoi, puis une fois par abonné qui le reçoit. Quand tout
+  // passait par un seul canal, chaque flamme était renvoyée à tous les spectateurs : le trafic croissait
+  // avec le carré du public. Rien n'est stocké : les messages ne font que passer.
+  const MONTANTS = ['mot', 'flamme', 'bonjour', 'votant'];
+  const DESCENDANTS = ['etat', 'vote', 'resultat-vote'];
+
+  function creerCanalPublic({ code, role, surEvenement, surStatut = () => { }, ping = false }) {
     if (!root.supabase) throw new Error('Bibliothèque Supabase non chargée (connexion internet ?)');
+    if (role !== 'scene' && role !== 'spectateur') throw new Error(`Rôle inconnu : ${role}`);
     const sb = root.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseCle, { auth: { persistSession: false } });
     if (ping) sb.rpc('ping').then(() => { }, () => { });
-    const canal = sb.channel(`juge-impro:public:${code}`, { config: { broadcast: { self: false } } });
-    for (const ev of ['mot', 'flamme', 'statut', 'etat', 'bonjour', 'vote', 'votant', 'resultat-vote']) {
-      canal.on('broadcast', { event: ev }, ({ payload }) => surEvenement(ev, payload || {}));
+    const descendant = sb.channel(`juge-impro:public:${code}`, { config: { broadcast: { self: false } } });
+    const montant = sb.channel(`juge-impro:public:${code}:scene`, { config: { broadcast: { self: false } } });
+    const ecouter = (canal, evenements) => evenements.forEach((ev) =>
+      canal.on('broadcast', { event: ev }, ({ payload }) => surEvenement(ev, payload || {})));
+
+    if (role === 'scene') {
+      ecouter(montant, MONTANTS);
+      // les pages de spectateurs d'avant ce correctif écrivent encore sur le canal descendant
+      ecouter(descendant, MONTANTS);
+      // la salle n'est ouverte que lorsque les deux canaux le sont
+      const ouverts = new Set();
+      const suivre = (canal) => (st) => {
+        if (st === 'SUBSCRIBED') ouverts.add(canal); else ouverts.delete(canal);
+        if (st !== 'SUBSCRIBED' || ouverts.size === 2) surStatut(st);
+      };
+      descendant.subscribe(suivre(descendant));
+      montant.subscribe(suivre(montant));
+      return {
+        envoyer: (event, payload) => descendant.send({ type: 'broadcast', event, payload }),
+        fermer: () => { for (const c of [descendant, montant]) { try { sb.removeChannel(c); } catch { /* déjà fermé */ } } }
+      };
     }
-    canal.subscribe((st) => surStatut(st));
+
+    ecouter(descendant, DESCENDANTS);
+    descendant.subscribe((st) => surStatut(st));
     return {
-      envoyer: (event, payload) => canal.send({ type: 'broadcast', event, payload }),
-      fermer: () => { try { sb.removeChannel(canal); } catch { /* déjà fermé */ } }
+      // par HTTP, sans abonnement : le spectateur ne reçoit pas ce que les autres envoient
+      envoyer: (event, payload) => (typeof montant.httpSend === 'function'
+        ? montant.httpSend(event, payload)
+        : montant.send({ type: 'broadcast', event, payload })),
+      fermer: () => { for (const c of [descendant, montant]) { try { sb.removeChannel(c); } catch { /* déjà fermé */ } } }
     };
   }
 
